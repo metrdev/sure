@@ -111,7 +111,12 @@ class ReportsController < ApplicationController
       @previous_period = build_previous_period
 
       # Get aggregated data
-      @income_statement = Current.family.income_statement(user: Current.user)
+      @income_statement = IncomeStatement.new(
+        Current.family,
+        user: Current.user,
+        transactions_scope: Transaction.reportable_by(Current.user),
+        use_current_user: false
+      )
       @current_income_totals = @income_statement.income_totals(period: @period)
       @current_expense_totals = @income_statement.expense_totals(period: @period)
 
@@ -358,10 +363,7 @@ class ReportsController < ApplicationController
     def build_transactions_breakdown
       # Base query: all transactions in the period
       # Exclude transfers, one-time, and CC payments (matching income_statement logic)
-      transactions = Transaction
-        .joins(:entry)
-        .joins(entry: :account)
-        .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+      transactions = Transaction.reportable_by(Current.user)
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
         .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
@@ -615,7 +617,7 @@ class ReportsController < ApplicationController
     end
 
     def apply_transaction_filters(scope)
-      scope = apply_entry_filters(scope)
+      scope = apply_entry_filters(scope, scope_to_finance_accounts: false)
 
       # Filter by tag (Transaction-specific — trades don't have taggings)
       if params[:filter_tag_id].present?
@@ -633,23 +635,26 @@ class ReportsController < ApplicationController
     end
 
     # Filters applicable to both transactions and trades (entry-level + category)
-    def apply_entry_filters(scope)
+    def apply_entry_filters(scope, scope_to_finance_accounts: true)
       # Scope to user's finance accounts
-      finance_account_ids = Current.user&.finance_accounts&.pluck(:id) || []
-      scope = scope.where(entries: { account_id: finance_account_ids })
+      if scope_to_finance_accounts
+        finance_account_ids = Current.user&.finance_accounts&.pluck(:id) || []
+        scope = scope.where(entries: { account_id: finance_account_ids })
+      end
 
       # Filter by category (including subcategories)
       if params[:filter_category_id].present?
         category_id = params[:filter_category_id]
         # Scope to family's categories to prevent cross-family data access
-        subcategory_ids = Current.family.categories.where(parent_id: category_id).pluck(:id)
+        subcategory_ids = Current.family.categories.visible_to(Current.user).where(parent_id: category_id).pluck(:id)
         all_category_ids = [ category_id ] + subcategory_ids
         scope = scope.where(category_id: all_category_ids)
       end
 
       # Filter by account
       if params[:filter_account_id].present?
-        scope = scope.where(entries: { account_id: params[:filter_account_id] })
+        allowed_account_ids = Current.user.finance_accounts.where(id: params[:filter_account_id]).select(:id)
+        scope = scope.where(entries: { account_id: allowed_account_ids })
       end
 
       # Filter by amount range
@@ -680,10 +685,7 @@ class ReportsController < ApplicationController
     def build_transactions_breakdown_for_export
       # Get flat transactions list (not grouped) for export
       # Exclude transfers, one-time, and CC payments (matching income_statement logic)
-      transactions = Transaction
-        .joins(:entry)
-        .joins(entry: :account)
-        .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+      transactions = Transaction.reportable_by(Current.user)
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
         .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)
@@ -719,10 +721,7 @@ class ReportsController < ApplicationController
 
       # Get all transactions in the period
       # Exclude transfers, one-time, and CC payments (matching income_statement logic)
-      transactions = Transaction
-        .joins(:entry)
-        .joins(entry: :account)
-        .where(accounts: { family_id: Current.family.id, status: [ "draft", "active" ] })
+      transactions = Transaction.reportable_by(Current.user)
         .merge(Account.included_in_reports)
         .where(entries: { entryable_type: "Transaction", excluded: false, date: @period.date_range })
         .where.not(kind: Transaction::BUDGET_EXCLUDED_KINDS)

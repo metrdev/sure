@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 json.categories @categories do |category|
-  json.partial! "api/v1/categories/category", category: category
+  json.partial! "api/v1/categories/category", category: category, viewer: @category_viewer
 end
 
 json.pagination do

@@ -8,9 +8,14 @@ class FamilyDataExportJob < ApplicationJob
     # re-enqueue in-flight jobs, and that redelivery is what completes it.
     return if family_export.completed? || family_export.failed?
 
+    unless family_export.requested_by
+      family_export.update!(status: :failed)
+      return
+    end
+
     family_export.update!(status: :processing)
 
-    exporter = Family::DataExporter.new(family_export.family)
+    exporter = Family::DataExporter.new(family_export.family, user: family_export.requested_by)
     zip_file = exporter.generate_export
 
     family_export.export_file.attach(

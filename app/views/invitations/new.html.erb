@@ -17,6 +17,11 @@
         {},
         { label: t(".role_label") } %>
 
+      <%= form.date_field :shared_transactions_visible_from,
+        value: @invitation.shared_transactions_visible_from || Date.current,
+        required: true,
+        label: t(".shared_transactions_visible_from", default: "Can see shared transactions starting on") %>
+
       <div class="w-full">
         <%= form.submit t(".submit"), class: "bg-inverse text-inverse rounded-lg px-4 py-2 w-full" %>
       </div>

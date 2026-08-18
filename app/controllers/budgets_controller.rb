@@ -7,6 +7,7 @@ class BudgetsController < ApplicationController
 
   def show
     @source_budget = @budget.most_recent_initialized_budget unless @budget.initialized?
+    @household_budget = Budget.find_or_bootstrap(Current.family, start_date: @budget.start_date)
     @breadcrumbs = [ [ t("breadcrumbs.home"), root_path ], [ t("breadcrumbs.budgets"), nil ] ]
   end
 

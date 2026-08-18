@@ -14,6 +14,7 @@ class Category::Merger
     sources.each { |category| validate_category_belongs_to_family!(category, "Source category '#{category.name}'") }
 
     @source_categories = sources.reject { |category| category.id == target_category.id }
+    validate_sharing_scope!
     validate_hierarchy!
     validate_reparenting!
   end
@@ -47,6 +48,13 @@ class Category::Merger
       return unless source_categories.any? { |source| target_ancestor_ids.include?(source.id) }
 
       raise UnauthorizedCategoryError, "A parent category cannot be merged into its own subcategory"
+    end
+
+    def validate_sharing_scope!
+      target_scope = [ target_category.effective_sharing_mode, target_category.effective_owner_id ]
+      return if source_categories.all? { |source| [ source.effective_sharing_mode, source.effective_owner_id ] == target_scope }
+
+      raise UnauthorizedCategoryError, "Categories with different household modes cannot be merged"
     end
 
     def validate_reparenting!

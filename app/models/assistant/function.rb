@@ -61,7 +61,7 @@ class Assistant::Function
 
     def family_category_names
       @family_category_names ||= begin
-        names = family.categories.pluck(:name)
+        names = family.categories.visible_to(user).pluck(:name)
         names << "Uncategorized"
         names
       end

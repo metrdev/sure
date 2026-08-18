@@ -5,7 +5,18 @@
             next_budget: @next_budget,
             latest_budget: @latest_budget %>
 
-  <div class="space-y-4">
+  <div class="space-y-8">
+    <%= render "budgets/household_budget", budget: @household_budget %>
+
+    <section class="space-y-4" aria-labelledby="personal-budget-title">
+      <div>
+        <h2 id="personal-budget-title" class="text-xl font-medium text-primary">
+          <%= t("budgets.personal.title", default: "My budget") %>
+        </h2>
+        <p class="text-sm text-secondary">
+          <%= t("budgets.personal.description", default: "Your aligned and private categories, limits, and transactions are visible only to you.") %>
+        </p>
+      </div>
     <%# Top Section: Donut and Summary side by side %>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <%# Budget Donut %>
@@ -81,5 +92,6 @@
 
       <%= render "budgets/budget_categories", budget: @budget %>
     <% end %>
+    </section>
   </div>
 </div>

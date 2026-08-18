@@ -24,6 +24,35 @@ ru:
       placeholder: Название категории
       poor_contrast: Плохой контраст, выберите более тёмный цвет или
       unassigned: "(не назначено)"
+      sharing_mode_label: Использование в домохозяйстве
+      sharing_started_on_label: Делиться операциями начиная с
+      sharing_help: В совместных категориях с этой даты видна карточка операции, включая заметки и вложения, но без данных счёта.
+      sharing_modes:
+        inherit: Наследовать от родителя
+        shared: Совместные операции и бюджет
+        aligned: Только общее определение
+        private: Приватная
+    sharing_modes:
+      shared: Совместная
+      aligned: Согласованная
+      private: Приватная
+    confirm_transition:
+      title: Подтвердите изменение категории
+      summary: Изменение затронет %{count} операций %{members} участников.
+      disclosure_date: Операции от %{date} и позднее станут видны участникам домохозяйства.
+      budget_changes: Изменения бюджета
+      conflicts_title: Сначала устраните конфликты названий
+      back: Назад
+      confirm: Подтвердить
+      changes:
+        archive_personal_limits: Архивировать личные лимиты
+        create_empty_household_limit: Создать пустой общий лимит
+        archive_household_limit: Архивировать общий лимит
+        create_empty_personal_limits: Создать пустые личные лимиты
+        create_empty_private_limits: Создать пустые приватные лимиты
+        move_personal_limits: Перенести личные лимиты в приватные копии
+        archive_personal_limit: Архивировать личный лимит
+        keep_owner_limit: Сохранить личный лимит владельца
     index:
       bootstrap: Использовать стандартные (рекомендуется)
       categories: Категории

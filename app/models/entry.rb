@@ -25,6 +25,7 @@ class Entry < ApplicationRecord
 
   validate :cannot_unexclude_split_parent
   validate :split_child_date_matches_parent
+  validate :transaction_category_matches_account_owner
 
   before_destroy :prevent_individual_child_deletion, if: :split_child?
 
@@ -524,6 +525,13 @@ class Entry < ApplicationRecord
       return if date == parent_entry.date
 
       errors.add(:date, "must match the parent transaction date for split children")
+    end
+
+    def transaction_category_matches_account_owner
+      return unless transaction? && entryable.category
+      return if entryable.category.usable_for_account?(account)
+
+      errors.add(:entryable, "category is not available to the account owner")
     end
 
     def prevent_individual_child_deletion

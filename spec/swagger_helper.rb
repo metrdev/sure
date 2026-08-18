@@ -300,7 +300,7 @@ RSpec.configure do |config|
           },
           BudgetSummary: {
             type: :object,
-            required: %w[id start_date end_date name currency initialized current created_at updated_at],
+            required: %w[id start_date end_date name currency initialized current scope created_at updated_at],
             properties: {
               id: { type: :string, format: :uuid },
               start_date: { type: :string, format: :date },
@@ -309,6 +309,7 @@ RSpec.configure do |config|
               currency: { type: :string },
               initialized: { type: :boolean },
               current: { type: :boolean },
+              scope: { type: :string, enum: %w[household personal] },
               budgeted_spending: { type: :string, nullable: true },
               budgeted_spending_cents: { type: :integer, nullable: true },
               expected_income: { type: :string, nullable: true },
@@ -321,7 +322,7 @@ RSpec.configure do |config|
           },
           Budget: {
             type: :object,
-            required: %w[id start_date end_date name currency initialized current created_at updated_at],
+            required: %w[id start_date end_date name currency initialized current scope created_at updated_at],
             properties: {
               id: { type: :string, format: :uuid },
               start_date: { type: :string, format: :date },
@@ -330,6 +331,7 @@ RSpec.configure do |config|
               currency: { type: :string },
               initialized: { type: :boolean },
               current: { type: :boolean },
+              scope: { type: :string, enum: %w[household personal] },
               budgeted_spending: { type: :string, nullable: true },
               budgeted_spending_cents: { type: :integer, nullable: true },
               expected_income: { type: :string, nullable: true },
@@ -495,12 +497,14 @@ RSpec.configure do |config|
           },
           Category: {
             type: :object,
-            required: %w[id name color icon],
+            required: %w[id name color icon sharing_mode],
             properties: {
               id: { type: :string, format: :uuid },
               name: { type: :string },
               color: { type: :string },
-              icon: { type: :string }
+              icon: { type: :string },
+              sharing_mode: { type: :string, enum: %w[shared aligned private] },
+              sharing_started_on: { type: :string, format: :date, nullable: true }
             }
           },
           CategoryParent: {
@@ -513,12 +517,14 @@ RSpec.configure do |config|
           },
           CategoryDetail: {
             type: :object,
-            required: %w[id name color icon subcategories_count created_at updated_at],
+            required: %w[id name color icon sharing_mode subcategories_count created_at updated_at],
             properties: {
               id: { type: :string, format: :uuid },
               name: { type: :string },
               color: { type: :string },
               icon: { type: :string },
+              sharing_mode: { type: :string, enum: %w[shared aligned private] },
+              sharing_started_on: { type: :string, format: :date, nullable: true },
               parent: { '$ref' => '#/components/schemas/CategoryParent', nullable: true },
               subcategories_count: { type: :integer, minimum: 0 },
               created_at: { type: :string, format: :'date-time' },
@@ -544,10 +550,12 @@ RSpec.configure do |config|
                 type: :object,
                 required: %w[name],
                 properties: {
-                  name: { type: :string, description: 'Category name (required, unique within family)' },
+                  name: { type: :string, description: 'Category name (required, unique among categories visible to the same user)' },
                   color: { type: :string, description: 'Hex color code (e.g. #22c55e). Defaults to #6172F3 if omitted; subcategories inherit parent color.' },
                   icon: { type: :string, description: 'Lucide icon name (e.g. "coffee"). Auto-suggested from the name when omitted.' },
-                  parent_id: { type: :string, format: :uuid, nullable: true, description: 'Parent category ID. Must belong to the same family. Categories support up to 2 levels of nesting.' }
+                  parent_id: { type: :string, format: :uuid, nullable: true, description: 'Visible parent category ID. Must belong to the same family. Categories support up to 2 levels of nesting.' },
+                  sharing_mode: { type: :string, enum: %w[shared aligned private], description: 'Admins may set the household mode. Member-created root categories are always private.' },
+                  sharing_started_on: { type: :string, format: :date, nullable: true, description: 'Required for shared categories; transactions before this date remain private.' }
                 }
               }
             }
@@ -801,7 +809,7 @@ RSpec.configure do |config|
               external_id: { type: :string, nullable: true },
               source: { type: :string, nullable: true },
               classification: { type: :string },
-              account: { '$ref' => '#/components/schemas/Account' },
+              account: { '$ref' => '#/components/schemas/Account', nullable: true, description: 'Redacted when access is granted only by a shared category.' },
               category: { '$ref' => '#/components/schemas/Category', nullable: true },
               merchant: { '$ref' => '#/components/schemas/Merchant', nullable: true },
               tags: {

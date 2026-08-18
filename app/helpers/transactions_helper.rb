@@ -1,4 +1,12 @@
 module TransactionsHelper
+  def category_only_transaction_access?(entry)
+    if defined?(@accessible_account_ids) && @accessible_account_ids
+      !@accessible_account_ids.include?(entry.account_id)
+    else
+      entry.account.permission_for(Current.user).nil?
+    end
+  end
+
   def transaction_search_filters
     [
       { key: "account_filter", label: t("transactions.search.filters.account"), icon: "layers" },

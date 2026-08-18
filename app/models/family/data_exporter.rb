@@ -4,8 +4,9 @@ require "csv"
 class Family::DataExporter
   EXPORT_VERSION = 2
 
-  def initialize(family)
+  def initialize(family, user: nil)
     @family = family
+    @user = user
   end
 
   def generate_export
@@ -61,7 +62,7 @@ class Family::DataExporter
         csv << [ "id", "name", "type", "subtype", "balance", "currency", "created_at" ]
 
         # Only export accounts belonging to this family
-        @family.accounts.includes(:accountable).find_each do |account|
+        accounts_scope.includes(:accountable).find_each do |account|
           csv << [
             account.id,
             account.name,
@@ -86,7 +87,7 @@ class Family::DataExporter
           .find_each do |transaction|
             csv << [
               transaction.entry.date&.iso8601,
-              transaction.entry.account.name,
+              account_visible?(transaction) ? transaction.entry.account.name : nil,
               transaction.entry.amount.to_s,
               transaction.entry.name,
               transaction.category&.name,
@@ -107,7 +108,7 @@ class Family::DataExporter
         csv << [ "date", "account_name", "ticker", "quantity", "price", "amount", "currency" ]
 
         # Only export trades from accounts belonging to this family
-        @family.trades
+        trades_scope
           .includes(:security, entry: :account)
           .find_each do |trade|
             csv << [
@@ -128,7 +129,7 @@ class Family::DataExporter
         csv << [ "name", "color", "parent_category", "lucide_icon" ]
 
         # Only export categories belonging to this family
-        @family.categories.includes(:parent).find_each do |category|
+        categories_scope.includes(:parent).find_each do |category|
           csv << [
             category.name,
             category.color,
@@ -144,7 +145,7 @@ class Family::DataExporter
         csv << [ "name", "resource_type", "active", "effective_date", "conditions", "actions" ]
 
         # Only export rules belonging to this family
-        @family.rules.includes(conditions: :sub_conditions, actions: []).find_each do |rule|
+        rules_scope.includes(conditions: :sub_conditions, actions: []).find_each do |rule|
           csv << [
             rule.name,
             rule.resource_type,
@@ -171,7 +172,7 @@ class Family::DataExporter
     end
 
     def transaction_attachment_manifest_items
-      @family.transactions
+      attachment_transactions_scope
         .with_attached_attachments
         .includes(:attachments_attachments, entry: :account)
         .flat_map do |transaction|
@@ -182,7 +183,7 @@ class Family::DataExporter
               record_id: transaction.id,
               extra: {
                 entry_id: transaction.entry.id,
-                account_id: transaction.entry.account_id
+                account_id: account_visible?(transaction) ? transaction.entry.account_id : nil
               }
             )
           end
@@ -190,7 +191,7 @@ class Family::DataExporter
     end
 
     def family_document_attachment_manifest_items
-      @family.family_documents.with_attached_file.filter_map do |document|
+      family_documents_scope.with_attached_file.filter_map do |document|
         next unless document.file.attached?
 
         attachment_manifest_item(
@@ -224,7 +225,7 @@ class Family::DataExporter
       lines = []
 
       # Export accounts with full accountable data
-      @family.accounts.includes(:accountable).find_each do |account|
+      accounts_scope.includes(:accountable).find_each do |account|
         lines << {
           type: "Account",
           data: account.as_json(
@@ -236,7 +237,7 @@ class Family::DataExporter
       end
 
       Balance.joins(:account)
-        .where(accounts: { family_id: @family.id })
+        .where(account_id: accounts_scope.select(:id))
         .chronological
         .each do |balance|
         lines << {
@@ -269,7 +270,7 @@ class Family::DataExporter
       end
 
       # Export categories
-      @family.categories.find_each do |category|
+      categories_scope.find_each do |category|
         lines << {
           type: "Category",
           data: category.as_json
@@ -277,7 +278,7 @@ class Family::DataExporter
       end
 
       # Export tags
-      @family.tags.find_each do |tag|
+      tags_scope.find_each do |tag|
         lines << {
           type: "Tag",
           data: tag.as_json
@@ -285,7 +286,7 @@ class Family::DataExporter
       end
 
       # Export merchants (only family merchants)
-      @family.merchants.find_each do |merchant|
+      merchants_scope.find_each do |merchant|
         lines << {
           type: "Merchant",
           data: merchant.as_json
@@ -293,7 +294,7 @@ class Family::DataExporter
       end
 
       # Export recurring transactions after accounts and merchants so import can remap dependencies.
-      @family.recurring_transactions.includes(:account, :merchant).find_each do |recurring_transaction|
+      recurring_transactions_scope.includes(:account, :merchant).find_each do |recurring_transaction|
         lines << {
           type: "RecurringTransaction",
           data: serialize_recurring_transaction_for_export(recurring_transaction)
@@ -312,7 +313,7 @@ class Family::DataExporter
         transaction_data = {
           id: transaction.id,
           entry_id: transaction.entry.id,
-          account_id: transaction.entry.account_id,
+          account_id: account_visible?(transaction) ? transaction.entry.account_id : nil,
           date: transaction.entry.date,
           amount: transaction.entry.amount,
           currency: transaction.entry.currency,
@@ -365,7 +366,7 @@ class Family::DataExporter
       end
 
       # Export trades with full data
-      @family.trades.includes(:security, entry: :account).find_each do |trade|
+      trades_scope.includes(:security, entry: :account).find_each do |trade|
         lines << {
           type: "Trade",
           data: {
@@ -388,7 +389,7 @@ class Family::DataExporter
       end
 
       # Export holding snapshots for backup and portfolio verification.
-      @family.holdings.includes(:account, :security).find_each do |holding|
+      @family.holdings.where(account_id: accounts_scope.select(:id)).includes(:account, :security).find_each do |holding|
         lines << {
           type: "Holding",
           data: {
@@ -417,7 +418,7 @@ class Family::DataExporter
       end
 
       # Export valuations
-      @family.entries.valuations.includes(:account, :entryable).find_each do |entry|
+      @family.entries.valuations.where(account_id: accounts_scope.select(:id)).includes(:account, :entryable).find_each do |entry|
         lines << {
           type: "Valuation",
           data: {
@@ -436,7 +437,7 @@ class Family::DataExporter
       end
 
       # Export budgets
-      @family.budgets.find_each do |budget|
+      budgets_scope.find_each do |budget|
         lines << {
           type: "Budget",
           data: budget.as_json
@@ -444,7 +445,7 @@ class Family::DataExporter
       end
 
       # Export budget categories
-      @family.budget_categories.includes(:budget, :category).find_each do |budget_category|
+      budget_categories_scope.includes(:budget, :category).find_each do |budget_category|
         lines << {
           type: "BudgetCategory",
           data: budget_category.as_json
@@ -452,7 +453,7 @@ class Family::DataExporter
       end
 
       # Export rules with versioned schema
-      @family.rules.includes(conditions: :sub_conditions, actions: []).find_each do |rule|
+      rules_scope.includes(conditions: :sub_conditions, actions: []).find_each do |rule|
         lines << {
           type: "Rule",
           version: 1,
@@ -464,11 +465,98 @@ class Family::DataExporter
     end
 
     def exportable_transactions
-      @family.transactions.merge(Entry.excluding_split_parents)
+      scope = @user ? Transaction.readable_by(@user) : @family.transactions
+      scope.merge(Entry.excluding_split_parents)
     end
 
     def ndjson_exportable_transactions
-      @family.transactions.joins(:entry).where(entries: { parent_entry_id: nil })
+      return @family.transactions.joins(:entry).where(entries: { parent_entry_id: nil }) unless @user
+
+      base_scope = @family.transactions.joins(:entry)
+      account_transactions = base_scope.where(
+        entries: { account_id: accounts_scope.select(:id), parent_entry_id: nil }
+      )
+      category_transactions = base_scope.where(
+        id: Transaction.readable_by(@user).merge(Entry.excluding_split_parents).select(:id)
+      )
+
+      account_transactions.or(category_transactions)
+    end
+
+    def attachment_transactions_scope
+      return @family.transactions unless @user
+
+      base_scope = @family.transactions.joins(:entry)
+      account_transactions = base_scope.where(entries: { account_id: accounts_scope.select(:id) })
+      readable_transactions = base_scope.where(id: exportable_transactions.select(:id))
+      account_transactions.or(readable_transactions)
+    end
+
+    def accounts_scope
+      @accounts_scope ||= @user ? @family.accounts.accessible_by(@user) : @family.accounts
+    end
+
+    def account_visible?(transaction)
+      account_ids_for_export.include?(transaction.entry.account_id)
+    end
+
+    def account_ids_for_export
+      @account_ids_for_export ||= accounts_scope.pluck(:id).to_set
+    end
+
+    def categories_scope
+      @categories_scope ||= @user ? @family.categories.visible_to(@user) : @family.categories
+    end
+
+    def trades_scope
+      @trades_scope ||= @family.trades.joins(:entry).where(entries: { account_id: accounts_scope.select(:id) })
+    end
+
+    def recurring_transactions_scope
+      @recurring_transactions_scope ||= if @user
+        @family.recurring_transactions.where(account_id: accounts_scope.select(:id))
+      else
+        @family.recurring_transactions
+      end
+    end
+
+    def tags_scope
+      return @family.tags unless @user
+
+      @family.tags.joins(:transactions).where(transactions: { id: exportable_transactions.select(:id) }).distinct
+    end
+
+    def merchants_scope
+      return @family.merchants unless @user
+
+      transaction_merchant_ids = exportable_transactions.where.not(merchant_id: nil).select(:merchant_id)
+      recurring_merchant_ids = @family.recurring_transactions
+        .where(account_id: accounts_scope.select(:id))
+        .where.not(merchant_id: nil)
+        .select(:merchant_id)
+
+      @family.merchants.where(id: transaction_merchant_ids).or(@family.merchants.where(id: recurring_merchant_ids))
+    end
+
+    def family_documents_scope
+      # Family documents are not account-scoped, so a user-scoped export cannot
+      # determine which statements are safe to disclose.
+      @user ? @family.family_documents.none : @family.family_documents
+    end
+
+    def budgets_scope
+      @budgets_scope ||= @user ? @family.budgets.where(user_id: [ nil, @user.id ]) : @family.budgets
+    end
+
+    def budget_categories_scope
+      @budget_categories_scope ||= BudgetCategory
+        .where(budget_id: budgets_scope.select(:id), archived_at: nil)
+    end
+
+    def rules_scope
+      # Rules have no owner today. A user-scoped export omits them instead of
+      # leaking account or private-category identifiers from another member.
+      @rules_scope ||= @user ? @family.rules.none : @family.rules
     end
 
     def serialize_split_lines_for_export(parent_entry)
@@ -504,7 +592,9 @@ class Family::DataExporter
     end
 
     def family_transaction_ids
-      @family_transaction_ids ||= exportable_transactions.select(:id)
+      @family_transaction_ids ||= exportable_transactions
+        .where(entries: { account_id: accounts_scope.select(:id) })
+        .select(:id)
     end
 
     def family_transfers

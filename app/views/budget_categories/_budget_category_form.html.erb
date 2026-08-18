@@ -12,7 +12,13 @@
   </div>
 
   <div class="ml-auto">
-    <%= form_with model: [budget_category.budget, budget_category], data: { controller: "auto-submit-form preserve-focus" } do |f| %>
+    <%= form_with model: [budget_category.budget, budget_category],
+          url: budget_budget_category_path(
+            budget_category.budget,
+            budget_category,
+            scope: (budget_category.budget.household? ? "household" : nil)
+          ),
+          data: { controller: "auto-submit-form preserve-focus" } do |f| %>
       <div class="form-field w-[120px]">
         <div class="flex items-center privacy-sensitive privacy-sensitive-interactive">
           <span class="text-secondary text-sm mr-2"><%= currency.symbol %></span>
@@ -23,7 +29,8 @@
                             id: dom_id(budget_category, :budgeted_spending),
                             min: 0,
                             data: { auto_submit_form_target: "auto" },
-                            title: budget_category.subcategory? ? t("budget_categories.budget_category_form.shared_title") : nil %>
+                            title: budget_category.subcategory? ? t("budget_categories.budget_category_form.shared_title") : nil,
+                            disabled: Current.user.guest? %>
         </div>
       </div>
     <% end %>

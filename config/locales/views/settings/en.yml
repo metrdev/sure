@@ -256,6 +256,7 @@ en:
         remove_member: Remove Member
         resend_confirmation_link: request a new confirmation email
         save: Save
+        shared_transactions_visible_from: Shared from
         unconfirmed_email_notice_html: You have requested to change your email to %{email}. Please go to your email and confirm for the change to take effect. If you haven't received the email, please check your spam folder, or %{resend_link}.
     securities:
       show:

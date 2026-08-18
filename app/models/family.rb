@@ -319,7 +319,8 @@ class Family < ApplicationRecord
   # Always uses the family's locale to ensure consistent category naming across all users.
   def investment_contributions_category
     # Find ALL legacy categories (created under old request-locale behavior)
-    legacy = categories.where(name: Category.all_investment_contributions_names).order(:created_at).to_a
+    household_categories = categories.household
+    legacy = household_categories.where(name: Category.all_investment_contributions_names).order(:created_at).to_a
 
     if legacy.any?
       keeper = legacy.first
@@ -344,7 +345,7 @@ class Family < ApplicationRecord
 
     # Create new category using family's locale
     I18n.with_locale(locale) do
-      categories.find_or_create_by!(name: Category.investment_contributions_name) do |cat|
+      household_categories.find_or_create_by!(name: Category.investment_contributions_name) do |cat|
         cat.color = "#0d9488"
         cat.lucide_icon = "trending-up"
       end
@@ -352,7 +353,7 @@ class Family < ApplicationRecord
   rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
     # Handle race condition: another process created the category
     I18n.with_locale(locale) do
-      categories.find_by!(name: Category.investment_contributions_name)
+      categories.household.find_by!(name: Category.investment_contributions_name)
     end
   end
 

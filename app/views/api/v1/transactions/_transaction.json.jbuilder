@@ -17,15 +17,21 @@ json.signed_amount_cents(transaction.entry.classification == "income" ? amount_c
 json.currency transaction.entry.currency
 json.name transaction.entry.name
 json.notes transaction.entry.notes
-json.external_id transaction.entry.external_id
-json.source transaction.entry.source
+if account_visible
+  json.external_id transaction.entry.external_id
+  json.source transaction.entry.source
+end
 json.classification transaction.entry.classification
 
 # Account information
-json.account do
-  json.id transaction.entry.account.id
-  json.name transaction.entry.account.name
-  json.account_type transaction.entry.account.accountable_type.underscore
+if account_visible
+  json.account do
+    json.id transaction.entry.account.id
+    json.name transaction.entry.account.name
+    json.account_type transaction.entry.account.accountable_type.underscore
+  end
+else
+  json.account nil
 end
 
 # Category information
@@ -59,7 +65,7 @@ end
 
 # Transfer information (if this transaction is part of a transfer)
 transfer = transaction.transfer
-if transfer.present?
+if transfer.present? && account_visible
   json.transfer do
     json.id transfer.id
 

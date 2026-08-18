@@ -13,6 +13,7 @@ json.name budget.name
 json.currency budget.currency
 json.initialized budget.initialized?
 json.current budget.current?
+json.scope budget.household? ? "household" : "personal"
 
 json.budgeted_spending budget.budgeted_spending_money&.format
 json.budgeted_spending_cents money_to_minor_units.call(budget.budgeted_spending_money)

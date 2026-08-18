@@ -7,15 +7,17 @@ class IncomeStatement
 
   attr_reader :family, :user
 
-  def initialize(family, user: nil)
+  def initialize(family, user: nil, transactions_scope: nil, categories_scope: nil, use_current_user: true)
     @family = family
-    @user = user || Current.user
+    @user = user || (Current.user if use_current_user)
+    @transactions_scope = transactions_scope
+    @categories_scope = categories_scope
   end
 
   def totals(transactions_scope: nil, date_range:)
     # Default to excluding pending transactions from budget/analytics calculations
     # Pending transactions shouldn't affect budget totals until they post
-    transactions_scope ||= family.transactions.visible.excluding_pending
+    transactions_scope ||= base_transactions_scope.visible.excluding_pending
 
     result = totals_query(transactions_scope: transactions_scope, date_range: date_range)
 
@@ -113,7 +115,7 @@ class IncomeStatement
   # callers (e.g. a monthly bar chart) typically query several distinct
   # periods and account combinations in one request.
   def totals_for(period, account_ids: nil)
-    scope = family.transactions.visible.excluding_pending.in_period(period)
+    scope = base_transactions_scope.visible.excluding_pending.in_period(period)
     scope = scope.where(entries: { account_id: account_ids }) if account_ids.present?
 
     totals(transactions_scope: scope, date_range: period.date_range)
@@ -136,6 +138,8 @@ class IncomeStatement
   end
 
   def median_expense(interval: "month", category: nil)
+    return 0 if @transactions_scope
+
     if category.present?
       category_stats(interval: interval).find { |stat| stat.classification == "expense" && stat.category_id == category.id }&.median || 0
     else
@@ -144,6 +148,8 @@ class IncomeStatement
   end
 
   def avg_expense(interval: "month", category: nil)
+    return 0 if @transactions_scope
+
     if category.present?
       category_stats(interval: interval).find { |stat| stat.classification == "expense" && stat.category_id == category.id }&.avg || 0
     else
@@ -152,6 +158,8 @@ class IncomeStatement
   end
 
   def median_income(interval: "month")
+    return 0 if @transactions_scope
+
     family_stats(interval: interval).find { |stat| stat.classification == "income" }&.median || 0
   end
 
@@ -163,7 +171,7 @@ class IncomeStatement
 
     def categories
       # Keep Category#subcategory?'s parent-based orphan semantics without lazy loads.
-      @categories ||= family.categories.includes(:parent).to_a
+      @categories ||= (@categories_scope || (user ? family.categories.visible_to(user) : family.categories)).includes(:parent).to_a
     end
 
     def period_cache_key(period)
@@ -219,7 +227,7 @@ class IncomeStatement
       @totals_for_period ||= {}
       @totals_for_period[period_cache_key(period)] ||=
         totals_query(
-          transactions_scope: family.transactions.visible.excluding_pending.in_period(period),
+          transactions_scope: base_transactions_scope.visible.excluding_pending.in_period(period),
           date_range: period.date_range
         )
     end
@@ -239,7 +247,13 @@ class IncomeStatement
     end
 
     def included_account_ids
+      return nil if @transactions_scope
+
       @included_account_ids ||= user ? user.finance_accounts.pluck(:id) : nil
+    end
+
+    def base_transactions_scope
+      @transactions_scope || family.transactions
     end
 
     def included_account_ids_hash
@@ -250,7 +264,11 @@ class IncomeStatement
       sql_hash = Digest::MD5.hexdigest(transactions_scope.to_sql)
 
       Rails.cache.fetch([
-        "income_statement", "totals_query", "v2", family.id, user&.id, included_account_ids_hash, sql_hash, date_range.begin, date_range.end, family.entries_cache_version, family.accounts.maximum(:updated_at)&.to_i
+        "income_statement", "totals_query", "v3", family.id, user&.id, included_account_ids_hash, sql_hash,
+        date_range.begin, date_range.end, family.entries_cache_version,
+        family.accounts.maximum(:updated_at)&.to_i,
+        family.categories.maximum(:updated_at)&.to_i,
+        family.users.maximum(:updated_at)&.to_i
       ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range, included_account_ids: included_account_ids).call }
     end
 

@@ -21,16 +21,23 @@ class BudgetCategoriesController < ApplicationController
       @budget_category = @budget.uncategorized_budget_category
       @recent_transactions = @recent_transactions.where(transactions: { category_id: nil })
     else
-      @budget_category = Current.family.budget_categories.find(params[:id])
+      @budget_category = @budget.budget_categories.find(params[:id])
       @recent_transactions = @recent_transactions.joins("LEFT JOIN categories ON categories.id = transactions.category_id")
                                                  .where("categories.id = ? OR categories.parent_id = ?", @budget_category.category.id, @budget_category.category.id)
     end
+
+    @member_contributions = @budget.member_contributions(category: @budget_category.category) if @budget.household?
 
     @recent_transactions = @recent_transactions.order("entries.date DESC, ABS(entries.amount) DESC").take(3)
   end
 
   def update
-    @budget_category = Current.family.budget_categories.find(params[:id])
+    if Current.user.guest?
+      redirect_to budget_path(@budget), alert: t("accounts.not_authorized")
+      return
+    end
+
+    @budget_category = @budget.budget_categories.find(params[:id])
     @budget_category.update_budgeted_spending!(budgeted_spending_param)
 
     respond_to do |format|
@@ -51,6 +58,8 @@ class BudgetCategoriesController < ApplicationController
 
     def set_budget
       start_date = Budget.param_to_date(params[:budget_month_year], family: Current.family)
-      @budget = Current.family.budgets.find_by!(start_date: start_date)
+      owner = params[:scope] == "household" ? nil : Current.user
+      @budget = Budget.find_or_bootstrap(Current.family, start_date: start_date, user: owner)
+      raise ActiveRecord::RecordNotFound unless @budget
     end
 end

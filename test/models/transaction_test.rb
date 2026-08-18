@@ -179,4 +179,105 @@ class TransactionTest < ActiveSupport::TestCase
 
     assert_equal securities(:msft), transaction.activity_security
   end
+
+  test "readable_by applies category and member sharing dates without granting account access" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    family = admin.family
+    member.update!(shared_transactions_visible_from: Date.current - 10.days)
+    category = family.categories.create!(
+      name: "Dated shared groceries",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current - 5.days
+    )
+    account = family.accounts.create!(
+      owner: admin,
+      name: "Unshared dated account",
+      balance: 0,
+      currency: family.currency,
+      accountable: Depository.new
+    )
+    account.account_shares.destroy_all
+    before_start = account.entries.create!(
+      name: "Before sharing",
+      date: Date.current - 6.days,
+      amount: 10,
+      currency: family.currency,
+      entryable: Transaction.new(category: category)
+    ).transaction
+    after_start = account.entries.create!(
+      name: "After sharing",
+      date: Date.current - 4.days,
+      amount: 20,
+      currency: family.currency,
+      entryable: Transaction.new(category: category)
+    ).transaction
+
+    readable_ids = Transaction.readable_by(member).pluck(:id)
+
+    assert_includes readable_ids, after_start.id
+    assert_not_includes readable_ids, before_start.id
+    assert_nil account.permission_for(member)
+  end
+
+  test "private category can only be assigned to its owner's account" do
+    member = users(:family_member)
+    family = member.family
+    private_category = family.categories.create!(
+      name: "Member private transaction category",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: member
+    )
+    transaction = accounts(:depository).entries.create!(
+      name: "Admin transaction",
+      date: Date.current,
+      amount: 10,
+      currency: family.currency,
+      entryable: Transaction.new
+    ).transaction
+
+    assert_not transaction.update(category: private_category)
+    assert_includes transaction.errors[:category], "is not available to the account owner"
+  end
+
+  test "category sharing exposes only an eligible split child" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    member.update!(shared_transactions_visible_from: Date.current.beginning_of_month)
+    shared_category = admin.family.categories.create!(
+      name: "Shared split child category",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+    account = admin.family.accounts.create!(
+      owner: admin,
+      name: "Unshared split account",
+      balance: 0,
+      currency: admin.family.currency,
+      accountable: Depository.new
+    )
+    parent = account.entries.create!(
+      name: "Split total",
+      date: Date.current,
+      amount: 100,
+      currency: admin.family.currency,
+      entryable: Transaction.new(category: shared_category)
+    )
+    shared_child, private_child = parent.split!([
+      { name: "Shared part", amount: 40, category_id: shared_category.id },
+      { name: "Private part", amount: 60, category_id: nil }
+    ])
+
+    readable_ids = Transaction.readable_by(member).pluck(:id)
+
+    assert_includes readable_ids, shared_child.transaction.id
+    assert_not_includes readable_ids, parent.transaction.id
+    assert_not_includes readable_ids, private_child.transaction.id
+  end
 end

@@ -6,16 +6,17 @@ class Api::V1::TransactionsController < Api::V1::BaseController
   # Ensure proper scope authorization for read vs write access
   before_action :ensure_read_scope, only: [ :index, :show ]
   before_action :ensure_write_scope, only: [ :create, :update, :destroy ]
-  before_action :set_transaction, only: [ :show, :update, :destroy ]
+  before_action :set_readable_transaction, only: :show
+  before_action :set_writable_transaction, only: [ :update, :destroy ]
 
   def index
     family = current_resource_owner.family
-    accessible_account_ids = family.accounts
+    @accessible_account_ids = family.accounts
       .accessible_by(current_resource_owner)
       .where.not(status: "pending_deletion")
-      .select(:id)
-    transactions_query = family.transactions
-      .joins(:entry).where(entries: { account_id: accessible_account_ids })
+      .pluck(:id)
+    transactions_query = Transaction.readable_by(current_resource_owner)
+      .where.not(accounts: { status: "pending_deletion" })
 
     # Apply filters
     transactions_query = apply_filters(transactions_query)
@@ -200,20 +201,32 @@ class Api::V1::TransactionsController < Api::V1::BaseController
 
   private
 
-    def set_transaction
+    def set_readable_transaction
+      raise ActiveRecord::RecordNotFound unless valid_uuid?(params[:id])
+
+      @accessible_account_ids = current_resource_owner.family.accounts.accessible_by(current_resource_owner).pluck(:id)
+      @transaction = Transaction.readable_by(current_resource_owner).find(params[:id])
+      @entry = @transaction.entry
+    rescue ActiveRecord::RecordNotFound
+      render_transaction_not_found
+    end
+
+    def set_writable_transaction
       raise ActiveRecord::RecordNotFound unless valid_uuid?(params[:id])
 
       family = current_resource_owner.family
+      @accessible_account_ids = family.accounts.accessible_by(current_resource_owner).pluck(:id)
       @transaction = family.transactions
         .joins(entry: :account)
-        .merge(Account.accessible_by(current_resource_owner))
+        .merge(Account.writable_by(current_resource_owner))
         .find(params[:id])
       @entry = @transaction.entry
     rescue ActiveRecord::RecordNotFound
-      render json: {
-        error: "not_found",
-        message: "Transaction not found"
-      }, status: :not_found
+      render_transaction_not_found
+    end
+
+    def render_transaction_not_found
+      render json: { error: "not_found", message: "Transaction not found" }, status: :not_found
     end
 
     def ensure_read_scope
@@ -227,11 +240,12 @@ class Api::V1::TransactionsController < Api::V1::BaseController
     def apply_filters(query)
       # Account filtering
       if params[:account_id].present?
-        query = query.where(entries: { account_id: params[:account_id] })
+        account_ids = current_resource_owner.accessible_accounts.where(id: params[:account_id]).select(:id)
+        query = query.where(entries: { account_id: account_ids })
       end
 
       if params[:account_ids].present?
-        account_ids = Array(params[:account_ids])
+        account_ids = current_resource_owner.accessible_accounts.where(id: Array(params[:account_ids])).select(:id)
         query = query.where(entries: { account_id: account_ids })
       end
 

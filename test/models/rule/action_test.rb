@@ -53,6 +53,32 @@ class Rule::ActionTest < ActiveSupport::TestCase
     assert_equal @grocery_category.id, @txn1.reload.category_id
   end
 
+  test "set_transaction_category applies a private category only to its owner's accounts" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    admin_account = @family.accounts.create!(
+      owner: admin, name: "Admin rule account", balance: 0, currency: "USD", accountable: Depository.new
+    )
+    member_account = @family.accounts.create!(
+      owner: member, name: "Member rule account", balance: 0, currency: "USD", accountable: Depository.new
+    )
+    admin_transaction = create_transaction(account: admin_account, name: "Admin rule purchase").transaction
+    member_transaction = create_transaction(account: member_account, name: "Member rule purchase").transaction
+    private_category = @family.categories.create!(
+      name: "Admin rule private", color: "#123456", lucide_icon: "lock", sharing_mode: "private", owner: admin
+    )
+    action = Rule::Action.new(
+      rule: @transaction_rule,
+      action_type: "set_transaction_category",
+      value: private_category.id
+    )
+
+    action.apply(Transaction.where(id: [ admin_transaction.id, member_transaction.id ]))
+
+    assert_equal private_category, admin_transaction.reload.category
+    assert_nil member_transaction.reload.category
+  end
+
   test "set_transaction_tags" do
     tag = @family.tags.create!(name: "Rule test tag")
 

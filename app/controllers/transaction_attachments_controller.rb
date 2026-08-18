@@ -1,5 +1,6 @@
 class TransactionAttachmentsController < ApplicationController
-  before_action :set_transaction
+  before_action :set_readable_transaction, only: :show
+  before_action :set_writable_transaction, only: %i[create destroy]
   before_action :set_attachment, only: [ :show, :destroy ]
   before_action :set_permissions, only: [ :create, :destroy ]
 
@@ -87,7 +88,11 @@ class TransactionAttachmentsController < ApplicationController
 
   private
 
-    def set_transaction
+    def set_readable_transaction
+      @transaction = Transaction.readable_by(Current.user).find(params[:transaction_id])
+    end
+
+    def set_writable_transaction
       @transaction = Current.family.transactions
                        .joins(entry: :account)
                        .merge(Account.accessible_by(Current.user))

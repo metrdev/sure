@@ -102,6 +102,22 @@ class InsightsHelperTest < ActionView::TestCase
     assert_nil insight_action(dangling)
   end
 
+  test "spending action hides another user's private category" do
+    private_category = families(:dylan_family).categories.create!(
+      name: "Private insight category",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: users(:family_admin)
+    )
+    insight = build_insight("spending_anomaly", metadata: { "category_id" => private_category.id })
+    Current.session = users(:family_member).sessions.create!
+
+    assert_nil insight_action(insight)
+  ensure
+    Current.reset
+  end
+
   private
     def build_insight(insight_type, priority: "medium", metadata: {}, facts: {}, period_start: nil, period_end: nil)
       Insight.new(

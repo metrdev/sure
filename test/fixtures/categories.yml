@@ -1,15 +1,18 @@
 one:
   name: Test
   family: dylan_family
+  sharing_mode: aligned
 
 income:
   name: Income
   color: "#fd7f6f"
   family: dylan_family
+  sharing_mode: aligned
 
 food_and_drink:
   name: Food & Drink
   family: dylan_family
+  sharing_mode: aligned
 
 subcategory:
   name: Restaurants

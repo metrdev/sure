@@ -4,7 +4,8 @@ class Rule::ActionExecutor::SetTransactionCategory < Rule::ActionExecutor
   end
 
   def options
-    family.categories.alphabetically.pluck(:name, :id)
+    scope = Current.user ? family.categories.visible_to(Current.user) : family.categories
+    scope.alphabetically.pluck(:name, :id)
   end
 
   def execute(transaction_scope, value: nil, ignore_attribute_locks: false, rule_run: nil)
@@ -12,6 +13,9 @@ class Rule::ActionExecutor::SetTransactionCategory < Rule::ActionExecutor
     return 0 unless category
 
     scope = transaction_scope
+    if category.private?
+      scope = scope.joins(entry: :account).where(accounts: { owner_id: category.effective_owner_id })
+    end
 
     unless ignore_attribute_locks
       scope = scope.enrichable(:category_id)

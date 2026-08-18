@@ -3,7 +3,7 @@ require "test_helper"
 class FamilyDataExportJobTest < ActiveJob::TestCase
   setup do
     @family = families(:dylan_family)
-    @export = @family.family_exports.create!
+    @export = @family.family_exports.create!(requested_by: users(:family_admin))
   end
 
   test "marks export as processing then completed" do
@@ -40,5 +40,16 @@ class FamilyDataExportJobTest < ActiveJob::TestCase
 
     @export.reload
     assert_equal "failed", @export.status
+  end
+
+  test "refuses a legacy export without a requester" do
+    export = @family.family_exports.create!
+    Family::DataExporter.any_instance.expects(:generate_export).never
+
+    perform_enqueued_jobs do
+      FamilyDataExportJob.perform_later(export)
+    end
+
+    assert_equal "failed", export.reload.status
   end
 end

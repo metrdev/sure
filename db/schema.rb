@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_18_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -367,7 +367,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.string "currency", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["budget_id", "category_id"], name: "index_budget_categories_on_budget_id_and_category_id", unique: true
+    t.datetime "archived_at"
+    t.index ["budget_id", "category_id"], name: "index_active_budget_categories_on_budget_and_category", unique: true, where: "(archived_at IS NULL)"
     t.index ["budget_id"], name: "index_budget_categories_on_budget_id"
     t.index ["category_id"], name: "index_budget_categories_on_category_id"
   end
@@ -381,8 +382,11 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.string "currency", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["family_id", "start_date", "end_date"], name: "index_budgets_on_family_id_and_start_date_and_end_date", unique: true
+    t.uuid "user_id"
+    t.index ["family_id", "start_date", "end_date"], name: "index_household_budgets_on_family_and_period", unique: true, where: "(user_id IS NULL)"
+    t.index ["family_id", "user_id", "start_date", "end_date"], name: "index_personal_budgets_on_family_user_and_period", unique: true, where: "(user_id IS NOT NULL)"
     t.index ["family_id"], name: "index_budgets_on_family_id"
+    t.index ["user_id"], name: "index_budgets_on_user_id"
   end
 
   create_table "categories", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -394,7 +398,15 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.uuid "parent_id"
     t.string "classification_unused", default: "expense", null: false
     t.string "lucide_icon", default: "shapes", null: false
+    t.string "sharing_mode"
+    t.uuid "owner_id"
+    t.date "sharing_started_on"
+    t.datetime "archived_at"
+    t.index ["family_id", "name"], name: "index_household_categories_on_family_and_name", where: "((owner_id IS NULL) AND (archived_at IS NULL))"
+    t.index ["family_id", "owner_id", "name"], name: "index_private_categories_on_family_owner_and_name", where: "((owner_id IS NOT NULL) AND (archived_at IS NULL))"
     t.index ["family_id"], name: "index_categories_on_family_id"
+    t.index ["owner_id"], name: "index_categories_on_owner_id"
+    t.check_constraint "sharing_mode IS NULL OR sharing_mode::text = ANY (ARRAY['shared'::character varying, 'aligned'::character varying, 'private'::character varying]::text[])", name: "categories_sharing_mode_check"
   end
 
   create_table "chats", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -796,7 +808,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.string "status", default: "pending", null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.uuid "requested_by_id"
     t.index ["family_id"], name: "index_family_exports_on_family_id"
+    t.index ["requested_by_id"], name: "index_family_exports_on_requested_by_id"
   end
 
   create_table "family_merchant_associations", id: :uuid, default: -> { "gen_random_uuid()" }, force: :cascade do |t|
@@ -1190,6 +1204,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.string "token_digest"
+    t.date "shared_transactions_visible_from", default: -> { "CURRENT_DATE" }, null: false
     t.index ["email", "family_id"], name: "index_invitations_on_email_and_family_id_pending", unique: true, where: "(accepted_at IS NULL)"
     t.index ["email"], name: "index_invitations_on_email"
     t.index ["family_id"], name: "index_invitations_on_family_id"
@@ -2239,6 +2254,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
     t.string "locale"
     t.uuid "default_account_id"
     t.string "webauthn_id"
+    t.date "shared_transactions_visible_from", default: -> { "CURRENT_DATE" }, null: false
     t.index ["default_account_id"], name: "index_users_on_default_account_id"
     t.index ["email"], name: "index_users_on_email", unique: true
     t.index ["family_id"], name: "index_users_on_family_id"
@@ -2340,7 +2356,9 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
   add_foreign_key "budget_categories", "budgets"
   add_foreign_key "budget_categories", "categories"
   add_foreign_key "budgets", "families"
+  add_foreign_key "budgets", "users"
   add_foreign_key "categories", "families"
+  add_foreign_key "categories", "users", column: "owner_id"
   add_foreign_key "chats", "users"
   add_foreign_key "coinbase_accounts", "coinbase_items"
   add_foreign_key "coinbase_items", "families"
@@ -2361,6 +2379,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_07_25_000000) do
   add_foreign_key "eval_samples", "eval_datasets"
   add_foreign_key "family_documents", "families"
   add_foreign_key "family_exports", "families"
+  add_foreign_key "family_exports", "users", column: "requested_by_id"
   add_foreign_key "family_merchant_associations", "families"
   add_foreign_key "family_merchant_associations", "merchants"
   add_foreign_key "goal_accounts", "accounts", on_delete: :restrict

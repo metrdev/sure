@@ -16,18 +16,19 @@ class Transaction::Search
   attribute :tags, array: true
   attribute :active_accounts_only, :boolean, default: true
 
-  attr_reader :family, :accessible_account_ids
+  attr_reader :family, :accessible_account_ids, :base_transactions_scope
 
-  def initialize(family, filters: {}, accessible_account_ids: nil)
+  def initialize(family, filters: {}, accessible_account_ids: nil, transactions_scope: nil)
     @family = family
     @accessible_account_ids = accessible_account_ids
+    @base_transactions_scope = transactions_scope || family.transactions
     super(filters)
   end
 
   def transactions_scope
     @transactions_scope ||= begin
       # This already joins entries + accounts. To avoid expensive double-joins, don't join them again (causes full table scan)
-      query = family.transactions.merge(Entry.excluding_split_parents)
+      query = base_transactions_scope.merge(Entry.excluding_split_parents)
 
       # Scope to accessible accounts when provided (including an empty array, which should yield no results)
       query = query.where(entries: { account_id: accessible_account_ids }) unless accessible_account_ids.nil?
@@ -103,8 +104,11 @@ class Transaction::Search
       family.id,
       Digest::SHA256.hexdigest(attributes.sort.to_h.to_json), # cached by filters
       family.entries_cache_version,
+      family.categories.maximum(:updated_at)&.to_i,
+      family.users.maximum(:updated_at)&.to_i,
       Digest::SHA256.hexdigest(family.tax_advantaged_account_ids.sort.to_json), # stable across processes
-      accessible_account_ids ? Digest::SHA256.hexdigest(accessible_account_ids.sort.to_json) : "all"
+      accessible_account_ids ? Digest::SHA256.hexdigest(accessible_account_ids.sort.to_json) : "all",
+      Digest::SHA256.hexdigest(base_transactions_scope.to_sql)
     ].join("/")
   end
 

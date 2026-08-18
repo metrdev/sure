@@ -355,6 +355,73 @@ class Family::DataExporterTest < ActiveSupport::TestCase
     end
   end
 
+  test "user scoped export includes shared category transactions without leaking the account or private reference data" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    admin.update!(shared_transactions_visible_from: Date.current)
+
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member Private Account",
+      accountable: Depository.new,
+      balance: 0,
+      currency: "USD"
+    )
+    shared_category = @family.categories.create!(
+      name: "Shared Export Category",
+      color: "#123456",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current
+    )
+    private_category = @family.categories.create!(
+      name: "Member Private Export Category",
+      color: "#654321",
+      sharing_mode: "private",
+      owner: member
+    )
+    shared_tag = @family.tags.create!(name: "Shared Export Tag", color: "#abcdef")
+    private_tag = @family.tags.create!(name: "Private Export Tag", color: "#fedcba")
+    shared_merchant = @family.merchants.create!(name: "Shared Export Merchant")
+    private_merchant = @family.merchants.create!(name: "Private Export Merchant")
+
+    shared_entry = member_account.entries.create!(
+      name: "Shared Export Transaction",
+      amount: 24_300,
+      currency: "USD",
+      date: Date.current,
+      entryable: Transaction.new(category: shared_category, merchant: shared_merchant, tags: [ shared_tag ])
+    )
+    private_entry = member_account.entries.create!(
+      name: "Private Export Transaction",
+      amount: 18_700,
+      currency: "USD",
+      date: Date.current,
+      entryable: Transaction.new(category: private_category, merchant: private_merchant, tags: [ private_tag ])
+    )
+
+    zip_data = Family::DataExporter.new(@family, user: admin).generate_export
+
+    Zip::File.open_buffer(zip_data) do |zip|
+      accounts_csv = zip.read("accounts.csv")
+      transactions_csv = zip.read("transactions.csv")
+      categories_csv = zip.read("categories.csv")
+      ndjson = zip.read("all.ndjson").lines.map { |line| JSON.parse(line) }
+
+      refute_includes accounts_csv, member_account.name
+      assert_includes transactions_csv, shared_entry.name
+      refute_includes transactions_csv, private_entry.name
+      assert_includes categories_csv, shared_category.name
+      refute_includes categories_csv, private_category.name
+
+      shared_transaction = ndjson.find { |item| item["type"] == "Transaction" && item.dig("data", "id") == shared_entry.entryable_id }
+      assert_nil shared_transaction.dig("data", "account_id")
+      assert ndjson.any? { |item| item["type"] == "Tag" && item.dig("data", "id") == shared_tag.id }
+      refute ndjson.any? { |item| item["type"] == "Tag" && item.dig("data", "id") == private_tag.id }
+      assert ndjson.any? { |item| item["type"] == "Merchant" && item.dig("data", "id") == shared_merchant.id }
+      refute ndjson.any? { |item| item["type"] == "Merchant" && item.dig("data", "id") == private_merchant.id }
+    end
+  end
+
   test "exports rules in CSV format" do
     zip_data = @exporter.generate_export
 

@@ -1,6 +1,14 @@
 ---
 en:
   budgets:
+    household:
+      title: Household budget
+      description: Only shared categories appear here. Every member's matching transactions count against one limit.
+      member_contributions: Member contributions
+      empty: Mark a category as shared to create the household budget.
+    personal:
+      title: My budget
+      description: Your aligned and private categories, limits, and transactions are visible only to you.
     budget_donut:
       spent: "Spent"
       new_budget: "New budget"

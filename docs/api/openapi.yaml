@@ -470,6 +470,7 @@ components:
       - currency
       - initialized
       - current
+      - scope
       - created_at
       - updated_at
       properties:
@@ -490,6 +491,11 @@ components:
           type: boolean
         current:
           type: boolean
+        scope:
+          type: string
+          enum:
+          - household
+          - personal
         budgeted_spending:
           type: string
           nullable: true
@@ -522,6 +528,7 @@ components:
       - currency
       - initialized
       - current
+      - scope
       - created_at
       - updated_at
       properties:
@@ -542,6 +549,11 @@ components:
           type: boolean
         current:
           type: boolean
+        scope:
+          type: string
+          enum:
+          - household
+          - personal
         budgeted_spending:
           type: string
           nullable: true
@@ -877,6 +889,7 @@ components:
       - name
       - color
       - icon
+      - sharing_mode
       properties:
         id:
           type: string
@@ -887,6 +900,16 @@ components:
           type: string
         icon:
           type: string
+        sharing_mode:
+          type: string
+          enum:
+          - shared
+          - aligned
+          - private
+        sharing_started_on:
+          type: string
+          format: date
+          nullable: true
     CategoryParent:
       type: object
       required:
@@ -905,6 +928,7 @@ components:
       - name
       - color
       - icon
+      - sharing_mode
       - subcategories_count
       - created_at
       - updated_at
@@ -918,6 +942,16 @@ components:
           type: string
         icon:
           type: string
+        sharing_mode:
+          type: string
+          enum:
+          - shared
+          - aligned
+          - private
+        sharing_started_on:
+          type: string
+          format: date
+          nullable: true
         parent:
           "$ref": "#/components/schemas/CategoryParent"
           nullable: true
@@ -954,7 +988,8 @@ components:
           properties:
             name:
               type: string
-              description: Category name (required, unique within family)
+              description: Category name (required, unique among categories visible
+                to the same user)
             color:
               type: string
               description: 'Hex color code (e.g. #22c55e). Defaults to #6172F3 if
@@ -967,8 +1002,22 @@ components:
               type: string
               format: uuid
               nullable: true
-              description: Parent category ID. Must belong to the same family. Categories
-                support up to 2 levels of nesting.
+              description: Visible parent category ID. Must belong to the same family.
+                Categories support up to 2 levels of nesting.
+            sharing_mode:
+              type: string
+              enum:
+              - shared
+              - aligned
+              - private
+              description: Admins may set the household mode. Member-created root
+                categories are always private.
+            sharing_started_on:
+              type: string
+              format: date
+              nullable: true
+              description: Required for shared categories; transactions before this
+                date remain private.
     Merchant:
       type: object
       required:
@@ -1005,6 +1054,23 @@ components:
         updated_at:
           type: string
           format: date-time
+    MerchantImportResult:
+      type: object
+      required:
+      - imported
+      - skipped
+      - merchants
+      properties:
+        imported:
+          type: integer
+          description: Number of merchants successfully created
+        skipped:
+          type: integer
+          description: Number of rows skipped (duplicates or invalid)
+        merchants:
+          type: array
+          items:
+            "$ref": "#/components/schemas/MerchantDetail"
     Tag:
       type: object
       required:
@@ -1445,6 +1511,8 @@ components:
           type: string
         account:
           "$ref": "#/components/schemas/Account"
+          nullable: true
+          description: Redacted when access is granted only by a shared category.
         category:
           "$ref": "#/components/schemas/Category"
           nullable: true
@@ -1564,6 +1632,20 @@ components:
           - liability_payment
           - loan_payment
         notes:
+          type: string
+          nullable: true
+        source_fee_amount:
+          type: string
+          nullable: true
+          description: Fee charged to the source account
+        source_fee_currency:
+          type: string
+          nullable: true
+        destination_fee_amount:
+          type: string
+          nullable: true
+          description: Fee deducted from the destination account
+        destination_fee_currency:
           type: string
           nullable: true
         inflow_transaction:
@@ -5723,6 +5805,39 @@ paths:
                 type: array
                 items:
                   "$ref": "#/components/schemas/MerchantDetail"
+    post:
+      summary: Import merchants from CSV
+      tags:
+      - Merchants
+      security:
+      - apiKeyAuth: []
+      parameters: []
+      responses:
+        '201':
+          description: merchants imported
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/MerchantImportResult"
+        '401':
+          description: unauthorized
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+        '422':
+          description: missing file or invalid CSV
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ErrorResponse"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: file
+        required: true
+        description: 'CSV file with columns: name* (required), color, website_url'
   "/api/v1/merchants/{id}":
     parameters:
     - name: id
@@ -7179,8 +7294,9 @@ paths:
       - Transactions
       security:
       - apiKeyAuth: []
-      description: Returns global ledger history for accessible accounts, including
-        disabled accounts but excluding accounts pending deletion.
+      description: Returns transactions from accessible accounts plus transactions
+        exposed by shared categories. Account and provider identifiers are redacted
+        for category-only access.
       parameters:
       - name: page
         in: query

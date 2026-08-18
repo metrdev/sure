@@ -24,6 +24,7 @@ ru:
       role_guest: Гость
       role_label: Роль
       role_member: Участник
+      shared_transactions_visible_from: Видит совместные операции начиная с
       submit: Отправить приглашение
       subtitle: Отправьте приглашение присоединиться к вашей учетной записи %{moniker}
         в %{product_name}

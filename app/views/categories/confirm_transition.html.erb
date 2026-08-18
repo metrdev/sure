@@ -1,0 +1,62 @@
+<%= render DS::Dialog.new do |dialog| %>
+  <% dialog.with_header(title: t(".title", default: "Confirm category change")) %>
+  <% dialog.with_body do %>
+    <div class="space-y-4">
+      <p class="text-sm text-secondary">
+        <%= t(
+              ".summary",
+              default: "%{count} transactions from %{members} members are affected.",
+              count: @preview.transaction_count,
+              members: @preview.member_count
+            ) %>
+      </p>
+
+      <% if @preview.earliest_disclosed_on.present? %>
+        <%= render DS::Alert.new(
+              variant: :warning,
+              message: t(
+                ".disclosure_date",
+                default: "Eligible transactions dated %{date} or later will become visible to household members.",
+                date: I18n.l(Date.parse(@preview.earliest_disclosed_on.to_s))
+              )
+            ) %>
+      <% end %>
+
+      <% if @preview.budget_changes.any? %>
+        <div>
+          <h3 class="text-sm font-medium text-primary"><%= t(".budget_changes", default: "Budget changes") %></h3>
+          <ul class="mt-2 list-disc pl-5 text-sm text-secondary">
+            <% @preview.budget_changes.each do |change| %>
+              <li><%= t(".changes.#{change}", default: change.to_s.humanize) %></li>
+            <% end %>
+          </ul>
+        </div>
+      <% end %>
+
+      <% if @preview.name_conflicts.any? %>
+        <%= render DS::Alert.new(
+              variant: :error,
+              title: t(".conflicts_title", default: "Resolve name conflicts first"),
+              message: @preview.name_conflicts.join(", ")
+            ) %>
+      <% end %>
+
+      <div class="flex justify-end gap-2">
+        <%= render DS::Link.new(
+              text: t(".back", default: "Back"),
+              variant: :secondary,
+              href: edit_category_path(@category)
+            ) %>
+        <% if @preview.name_conflicts.empty? %>
+          <%= form_with url: category_path(@category), method: :patch do %>
+            <%= hidden_field_tag :confirm_transition, "1" %>
+            <% @transition_attributes.each do |name, value| %>
+              <%= hidden_field_tag "category[#{name}]", value %>
+            <% end %>
+            <%= render DS::Button.new(text: t(".confirm", default: "Confirm"), type: :submit) %>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  <% end %>
+<% end %>

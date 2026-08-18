@@ -43,8 +43,8 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "lists family exports" do
-    completed_export = @family.family_exports.create!(status: "completed")
-    processing_export = @family.family_exports.create!(status: "processing")
+    completed_export = @family.family_exports.create!(status: "completed", requested_by: @admin)
+    processing_export = @family.family_exports.create!(status: "processing", requested_by: @admin)
 
     get api_v1_family_exports_url, headers: api_headers(@read_only_api_key)
     assert_response :success
@@ -58,7 +58,7 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "shows a family export" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",
@@ -90,6 +90,7 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
 
     assert_equal "pending", export.status
     assert_equal @family.id, export.family_id
+    assert_equal @admin, export.requested_by
   end
 
   test "read-only key cannot create a family export" do
@@ -144,7 +145,7 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "redirects completed export downloads to the attached file" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",
@@ -158,7 +159,7 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "download returns conflict when export is not ready" do
-    export = @family.family_exports.create!(status: "processing")
+    export = @family.family_exports.create!(status: "processing", requested_by: @admin)
 
     get download_api_v1_family_export_url(export), headers: api_headers(@read_only_api_key)
     assert_response :conflict
@@ -168,7 +169,7 @@ class Api::V1::FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "download handles storage URL failures without leaking details" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",

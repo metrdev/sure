@@ -34,6 +34,24 @@ class FamilyTest < ActiveSupport::TestCase
     end
   end
 
+  test "investment_contributions_category ignores a member's private category" do
+    family = families(:dylan_family)
+    family.categories.where(name: Category.all_investment_contributions_names).destroy_all
+    private_category = family.categories.create!(
+      name: Category.investment_contributions_name,
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: users(:family_member)
+    )
+
+    category = family.investment_contributions_category
+
+    assert category.aligned?
+    assert_not_equal private_category, category
+    assert Category.unscoped.exists?(private_category.id)
+  end
+
   test "investment_contributions_category uses family locale consistently" do
     family = families(:dylan_family)
     family.update!(locale: "fr")

@@ -6,11 +6,14 @@ class Budget < ApplicationRecord
   attr_accessor :current_user
 
   belongs_to :family
+  belongs_to :user, optional: true
 
-  has_many :budget_categories, -> { includes(:category) }, dependent: :destroy
+  has_many :all_budget_categories, class_name: "BudgetCategory", dependent: :destroy
+  has_many :budget_categories, -> { where(archived_at: nil).includes(:category) }, class_name: "BudgetCategory"
 
   validates :start_date, :end_date, presence: true
-  validates :start_date, :end_date, uniqueness: { scope: :family_id }
+  validates :start_date, uniqueness: { scope: [ :family_id, :user_id, :end_date ] }
+  validate :user_belongs_to_family
 
   monetize :budgeted_spending, :expected_income, :allocated_spending,
            :actual_spending, :available_to_spend, :available_to_allocate,
@@ -52,6 +55,7 @@ class Budget < ApplicationRecord
 
         budget = Budget.find_or_create_by!(
           family: family,
+          user: user,
           start_date: budget_start,
           end_date: budget_end
         ) do |b|
@@ -91,7 +95,7 @@ class Budget < ApplicationRecord
 
   def sync_budget_categories
     # Category changes can leave the association memoized before this sync runs.
-    current_categories_by_id = family.categories.reload.index_by(&:id)
+    current_categories_by_id = budget_categories_scope.reload.index_by(&:id)
     current_category_ids = current_categories_by_id.keys.to_set
     existing_budget_category_ids = budget_categories.pluck(:category_id).to_set
     categories_to_add = current_category_ids - existing_budget_category_ids
@@ -107,7 +111,7 @@ class Budget < ApplicationRecord
     end
 
     # Remove old categories
-    budget_categories.where(category_id: categories_to_remove).destroy_all if categories_to_remove.any?
+    budget_categories.where(category_id: categories_to_remove).update_all(archived_at: Time.current) if categories_to_remove.any?
   end
 
   def uncategorized_budget_category
@@ -118,11 +122,29 @@ class Budget < ApplicationRecord
   end
 
   def transactions
-    scope = family.transactions.visible.in_period(period)
-    if current_user
-      scope = scope.joins(:entry).where(entries: { account_id: family.accounts.accessible_by(current_user).included_in_reports.select(:id) })
+    scope = if household?
+      Transaction.shared_for_household(family)
+    else
+      personal_category_ids = family.categories.visible_to(user)
+        .where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) IN ('aligned', 'private')")
+        .select(:id)
+
+      personal_scope = family.transactions
+        .joins(entry: :account)
+        .where(accounts: { owner_id: user_id })
+      personal_scope.where(category_id: personal_category_ids)
+        .or(personal_scope.where(category_id: nil))
     end
-    scope
+
+    scope.visible.in_period(period)
+  end
+
+  def household?
+    user_id.nil?
+  end
+
+  def personal?
+    !household?
   end
 
   def name
@@ -138,12 +160,38 @@ class Budget < ApplicationRecord
   end
 
   def initialized?
-    budgeted_spending.present?
+    household? || budgeted_spending.present?
+  end
+
+  def budgeted_spending
+    return allocated_spending if household?
+
+    super
+  end
+
+  def member_contributions(category: nil)
+    family.users.where(active: true).order(:created_at).each_with_object({}) do |member, contributions|
+      member_scope = transactions.where(accounts: { owner_id: member.id })
+      if category
+        category_ids = [ category.id, *category.subcategory_ids ]
+        member_scope = member_scope.where(category_id: category_ids)
+      end
+
+      statement = IncomeStatement.new(
+        family,
+        transactions_scope: member_scope,
+        use_current_user: false
+      )
+      expenses = statement.expense_totals(period: period).total
+      refunds = statement.income_totals(period: period).total
+      contributions[member] = Money.new(expenses - refunds, currency)
+    end
   end
 
   def most_recent_initialized_budget
     family.budgets
       .includes(:budget_categories)
+      .where(user_id: user_id)
       .where("start_date < ?", start_date)
       .where.not(budgeted_spending: nil)
       .order(start_date: :desc)
@@ -152,6 +200,7 @@ class Budget < ApplicationRecord
 
   def copy_from!(source_budget)
     raise ArgumentError, "source budget must belong to the same family" unless source_budget.family_id == family_id
+    raise ArgumentError, "source budget must have the same scope" unless source_budget.user_id == user_id
     raise ArgumentError, "source budget must precede target budget" unless source_budget.start_date < start_date
 
     Budget.transaction do
@@ -238,11 +287,15 @@ class Budget < ApplicationRecord
   end
 
   def category_median_monthly_expense(category)
-    income_statement.median_expense(category: category)
+    return 0 if household?
+
+    historical_income_statement.median_expense(category: category)
   end
 
   def category_avg_monthly_expense(category)
-    income_statement.avg_expense(category: category)
+    return 0 if household?
+
+    historical_income_statement.avg_expense(category: category)
   end
 
   def available_to_spend
@@ -279,6 +332,8 @@ class Budget < ApplicationRecord
   end
 
   def allocations_valid?
+    return true if household?
+
     initialized? && available_to_allocate >= 0 && allocated_spending > 0
   end
 
@@ -286,11 +341,13 @@ class Budget < ApplicationRecord
   # Income: How much user earned relative to what they expected to earn
   # =============================================================================
   def estimated_income
-    family.income_statement.median_income(interval: "month")
+    return 0 if household?
+
+    historical_income_statement.median_income(interval: "month")
   end
 
   def actual_income
-    family.income_statement.income_totals(period: self.period).total
+    income_statement.income_totals(period: period).total
   end
 
   def actual_income_percent
@@ -310,8 +367,33 @@ class Budget < ApplicationRecord
   end
 
   private
+    def budget_categories_scope
+      return family.categories.shared if household?
+
+      family.categories.visible_to(user)
+        .where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) IN ('aligned', 'private')")
+    end
+
+    def user_belongs_to_family
+      errors.add(:user, "must belong to the same family") if user && user.family_id != family_id
+    end
+
     def income_statement
-      @income_statement ||= family.income_statement(user: current_user)
+      @income_statement ||= IncomeStatement.new(
+        family,
+        user: personal? ? user : nil,
+        transactions_scope: transactions,
+        categories_scope: budget_categories_scope,
+        use_current_user: personal?
+      )
+    end
+
+    def historical_income_statement
+      @historical_income_statement ||= IncomeStatement.new(
+        family,
+        user: personal? ? user : nil,
+        use_current_user: personal?
+      )
     end
 
     def net_totals

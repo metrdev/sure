@@ -53,13 +53,14 @@ module InsightsHelper
   # The contextual action for a card, built from the subject ids each
   # generator stores in metadata. Returns nil when the subject no longer
   # resolves (deleted category/account) — the card renders without a link.
-  # Looks up through insight.family, not Current, so broadcast renders work.
+  # Broadcast renders have no Current user and retain the family-wide lookup.
   def insight_action(insight)
     metadata = insight.metadata || {}
 
     case insight.insight_type
     when "spending_anomaly"
-      category = insight.family.categories.find_by(id: metadata["category_id"])
+      categories = Current.user ? insight.family.categories.visible_to(Current.user) : insight.family.categories
+      category = categories.find_by(id: metadata["category_id"])
       category && {
         text: t("insights.actions.spending_anomaly", category: category.name),
         href: transactions_path(q: { categories: [ category.name ] })

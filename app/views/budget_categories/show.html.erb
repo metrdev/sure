@@ -38,6 +38,13 @@
             </dd>
           </div>
 
+          <% @member_contributions&.each do |member, amount| %>
+            <div class="flex items-center justify-between text-sm">
+              <dt class="text-secondary"><%= member.display_name %></dt>
+              <dd class="text-primary font-medium privacy-sensitive"><%= format_money(amount) %></dd>
+            </div>
+          <% end %>
+
           <% if @budget_category.budget.initialized? %>
             <div class="flex items-center justify-between text-sm">
               <dt class="text-secondary"><%= t(".status") %></dt>

@@ -7,6 +7,7 @@
   <% end %>
   <% dialog.with_body do %>
     <%# Potential duplicate alert %>
+    <% unless category_only_transaction_access?(@entry) %>
     <% if @entry.transaction.has_potential_duplicate? %>
       <% potential_match = @entry.transaction.potential_duplicate_entry %>
       <% if potential_match %>
@@ -48,7 +49,10 @@
         </div>
       <% end %>
     <% end %>
-    <%= render "entries/protection_indicator", entry: @entry, unlock_path: unlock_transaction_path(@entry.transaction) %>
+    <% end %>
+    <% unless category_only_transaction_access?(@entry) %>
+      <%= render "entries/protection_indicator", entry: @entry, unlock_path: unlock_transaction_path(@entry.transaction) %>
+    <% end %>
     <% dialog.with_section(title: t(".overview"), open: true) do %>
       <div>
         <% split_locked = @entry.split_child? || @entry.split_parent? %>
@@ -84,7 +88,7 @@
             </div>
             <%= f.fields_for :entryable do |ef| %>
               <%= ef.collection_select :category_id,
-                      Current.family.categories.alphabetically,
+                      Current.family.categories.visible_to(Current.user).alphabetically,
                     :id, :name,
                     { label: t(".category_label"),
                       class: "text-subdued", include_blank: t(".uncategorized"),
@@ -103,13 +107,15 @@
               data: { controller: "auto-submit-form" } do |f| %>
           <%= hidden_field_tag :grouped, "true" if params[:grouped] == "true" %>
           <% unless @entry.transaction.transfer? %>
-            <%= f.select :account,
-                options_for_select(
-                  accessible_accounts.alphabetically.pluck(:name, :id),
-                  @entry.account_id
-                ),
-                { label: t(".account_label") },
-                { disabled: true } %>
+            <% unless category_only_transaction_access?(@entry) %>
+              <%= f.select :account,
+                  options_for_select(
+                    accessible_accounts.alphabetically.pluck(:name, :id),
+                    @entry.account_id
+                  ),
+                  { label: t(".account_label") },
+                  { disabled: true } %>
+            <% end %>
             <%= f.fields_for :entryable do |ef| %>
               <%= ef.collection_select :merchant_id,
                     Current.family.available_merchants_for(Current.user).alphabetically,
@@ -137,7 +143,7 @@
       <%= render "transactions/attachments", transaction: @entry.transaction, can_upload: can_annotate_entry?, can_delete: can_edit_entry? %>
     <% end %>
 
-    <% if (details = build_transaction_extra_details(@entry)) %>
+    <% if !category_only_transaction_access?(@entry) && (details = build_transaction_extra_details(@entry)) %>
       <% dialog.with_section(title: t(".additional_details"), open: false) do %>
         <div class="px-3 py-2 space-y-3">
           <% if details[:kind] == :simplefin %>
@@ -184,7 +190,7 @@
       <% end %>
     <% end %>
     <%# Split children list for split parent %>
-    <% if @entry.split_parent? %>
+    <% if @entry.split_parent? && !category_only_transaction_access?(@entry) %>
       <% dialog.with_section(title: t("splits.show.title"), open: true) do %>
         <div class="px-3 py-2 space-y-2">
           <p class="text-xs text-secondary"><%= t("splits.show.description") %></p>
@@ -225,7 +231,7 @@
     <% end %>
 
     <%# For split child, show parent info and actions %>
-    <% if @entry.split_child? %>
+    <% if @entry.split_child? && !category_only_transaction_access?(@entry) %>
       <% dialog.with_section(title: t("splits.child.title"), open: true) do %>
         <div class="px-3 py-2">
           <% parent = @entry.parent_entry %>

@@ -1,8 +1,11 @@
 class Category < ApplicationRecord
+  default_scope { where(archived_at: nil) }
+
   has_many :transactions, dependent: :nullify, class_name: "Transaction"
   has_many :import_mappings, as: :mappable, dependent: :destroy, class_name: "Import::Mapping"
 
   belongs_to :family
+  belongs_to :owner, class_name: "User", optional: true
 
   has_many :budget_categories, dependent: :destroy
   has_many :subcategories,
@@ -14,11 +17,17 @@ class Category < ApplicationRecord
 
   validates :name, :color, :lucide_icon, :family, presence: true
   validates :color, format: { with: /\A#[0-9A-Fa-f]{6}\z/ }
-  validates :name, uniqueness: { scope: :family_id }
+  SHARING_MODES = %w[shared aligned private].freeze
+
+  validates :sharing_mode, inclusion: { in: SHARING_MODES }, allow_nil: true
 
   validate :category_level_limit
+  validate :sharing_configuration
+  validate :visible_name_is_unique
 
+  before_validation :assign_default_sharing_mode
   before_save :inherit_color_from_parent
+  before_destroy :materialize_inherited_sharing_for_children
 
   scope :alphabetically, -> { order(:name) }
   scope :alphabetically_by_hierarchy, -> {
@@ -28,6 +37,38 @@ class Category < ApplicationRecord
       .order(:name)
   }
   scope :roots, -> { where(parent_id: nil) }
+  scope :with_effective_sharing, -> { left_joins(:parent) }
+  scope :shared, -> {
+    with_effective_sharing.where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'shared'")
+  }
+  scope :aligned, -> {
+    with_effective_sharing.where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'aligned'")
+  }
+  scope :household, -> {
+    with_effective_sharing.where(
+      "COALESCE(categories.sharing_mode, parents_categories.sharing_mode) IN ('shared', 'aligned')"
+    )
+  }
+  scope :private_for, ->(user) {
+    with_effective_sharing
+      .where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'private'")
+      .where("COALESCE(categories.owner_id, parents_categories.owner_id) = ?", user.id)
+  }
+  scope :visible_to, ->(user) {
+    with_effective_sharing.where(
+      <<~SQL.squish,
+        COALESCE(categories.sharing_mode, parents_categories.sharing_mode) IN ('shared', 'aligned')
+        OR (
+          COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'private'
+          AND COALESCE(categories.owner_id, parents_categories.owner_id) = :user_id
+        )
+      SQL
+      user_id: user.id
+    )
+  }
+  scope :available_for_account, ->(account) {
+    account.owner ? visible_to(account.owner) : household
+  }
   # Legacy scopes - classification removed; these now return all categories
   scope :incomes, -> { all }
   scope :expenses, -> { all }
@@ -298,7 +339,45 @@ class Category < ApplicationRecord
     self.color = parent.color if subcategory? && parent
   end
 
+  def effective_sharing_mode
+    sharing_mode.presence || parent&.effective_sharing_mode
+  end
+
+  def effective_owner_id
+    owner_id.presence || parent&.effective_owner_id
+  end
+
+  def effective_sharing_started_on
+    sharing_started_on.presence || parent&.effective_sharing_started_on
+  end
+
+  def shared?
+    effective_sharing_mode == "shared"
+  end
+
+  def aligned?
+    effective_sharing_mode == "aligned"
+  end
+
+  def private?
+    effective_sharing_mode == "private"
+  end
+
+  def usable_for_account?(account)
+    account.present? &&
+      archived_at.nil? &&
+      family_id == account.family_id &&
+      (!private? || effective_owner_id == account.owner_id)
+  end
+
   def replace_and_destroy!(replacement)
+    if replacement && replacement.family_id != family_id
+      raise ArgumentError, "replacement category must belong to the same family"
+    end
+    if replacement&.private? && transactions.joins(entry: :account).where.not(accounts: { owner_id: replacement.effective_owner_id }).exists?
+      raise ArgumentError, "private replacement category must belong to every affected account owner"
+    end
+
     transaction do
       transactions.update_all category_id: replacement&.id
       destroy!
@@ -348,6 +427,61 @@ class Category < ApplicationRecord
   end
 
   private
+    def assign_default_sharing_mode
+      self.sharing_mode ||= "aligned" unless parent_id.present? || parent.present?
+    end
+
+    def sharing_configuration
+      if parent && parent.family_id != family_id
+        errors.add(:parent, "must belong to the same family")
+      end
+
+      if sharing_mode.nil?
+        errors.add(:sharing_mode, "must be set for a root category") unless parent
+        errors.add(:owner, "must be inherited from the parent") if owner_id.present?
+        errors.add(:sharing_started_on, "must be inherited from the parent") if sharing_started_on.present?
+        return
+      end
+
+      if sharing_mode == "private"
+        errors.add(:owner, "must be set for a private category") if owner_id.blank?
+        errors.add(:owner, "must belong to the same family") if owner && owner.family_id != family_id
+        errors.add(:sharing_started_on, "is only available for shared categories") if sharing_started_on.present?
+      else
+        errors.add(:owner, "is only available for private categories") if owner_id.present?
+        if sharing_mode == "shared"
+          errors.add(:sharing_started_on, "must be set for a shared category") if sharing_started_on.blank?
+        elsif sharing_started_on.present?
+          errors.add(:sharing_started_on, "is only available for shared categories")
+        end
+      end
+    end
+
+    def visible_name_is_unique
+      return if name.blank? || family_id.blank?
+
+      conflicts = family.categories.where(name: name).where.not(id: id).includes(:parent)
+      candidate_owner_id = effective_owner_id
+
+      duplicate = conflicts.any? do |other|
+        if private?
+          other.private? && other.effective_owner_id == candidate_owner_id
+        else
+          !other.private?
+        end
+      end
+
+      errors.add(:name, :taken) if duplicate
+    end
+
+    def materialize_inherited_sharing_for_children
+      subcategories.where(sharing_mode: nil).update_all(
+        sharing_mode: effective_sharing_mode,
+        owner_id: effective_owner_id,
+        sharing_started_on: effective_sharing_started_on
+      )
+    end
+
     def category_level_limit
       if (subcategory? && parent&.subcategory?) || (parent? && subcategory?)
         errors.add(:parent, "can't have more than 2 levels of subcategories")

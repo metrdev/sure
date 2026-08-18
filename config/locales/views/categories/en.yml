@@ -22,6 +22,35 @@ en:
       icon: Icon
       auto_adjust: auto-adjust.
       poor_contrast: "Poor contrast, choose a darker color or"
+      sharing_mode_label: Household use
+      sharing_started_on_label: Share transactions starting on
+      sharing_help: Shared categories expose matching transaction cards from this date, including notes and attachments, but never their accounts.
+      sharing_modes:
+        inherit: Inherit from parent
+        shared: Shared transactions and budget
+        aligned: Shared definition only
+        private: Private
+    sharing_modes:
+      shared: Shared
+      aligned: Aligned
+      private: Private
+    confirm_transition:
+      title: Confirm category change
+      summary: "%{count} transactions from %{members} members are affected."
+      disclosure_date: Eligible transactions dated %{date} or later will become visible to household members.
+      budget_changes: Budget changes
+      conflicts_title: Resolve name conflicts first
+      back: Back
+      confirm: Confirm
+      changes:
+        archive_personal_limits: Archive personal limits
+        create_empty_household_limit: Create an empty household limit
+        archive_household_limit: Archive the household limit
+        create_empty_personal_limits: Create empty personal limits
+        create_empty_private_limits: Create empty private limits
+        move_personal_limits: Move personal limits to private copies
+        archive_personal_limit: Archive the personal limit
+        keep_owner_limit: Keep the owner's personal limit
     destroy_all:
       success: All categories deleted
     index:

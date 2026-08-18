@@ -9,7 +9,7 @@ class FamilyExportsController < ApplicationController
   end
 
   def create
-    @export = Current.family.family_exports.create!
+    @export = Current.family.family_exports.create!(requested_by: Current.user)
     FamilyDataExportJob.perform_later(@export)
 
     respond_to do |format|
@@ -21,7 +21,7 @@ class FamilyExportsController < ApplicationController
   end
 
   def index
-    @pagy, @exports = pagy(Current.family.family_exports.ordered, limit: safe_per_page)
+    @pagy, @exports = pagy(Current.family.family_exports.where(requested_by: Current.user).ordered, limit: safe_per_page)
     @breadcrumbs = [
       [ t("breadcrumbs.home"), root_path ],
       [ t("breadcrumbs.exports"), family_exports_path ]
@@ -57,7 +57,7 @@ class FamilyExportsController < ApplicationController
   private
 
     def set_export
-      @export = Current.family.family_exports.find(params[:id])
+      @export = Current.family.family_exports.where(requested_by: Current.user).find(params[:id])
     end
 
     def require_admin

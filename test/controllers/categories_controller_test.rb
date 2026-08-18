@@ -122,6 +122,33 @@ class CategoriesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to categories_url
   end
 
+  test "changing category mode requires confirmation" do
+    category = @family.categories.create!(
+      name: "Category mode confirmation",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "aligned"
+    )
+    attributes = {
+      name: category.name,
+      color: category.color,
+      lucide_icon: category.lucide_icon,
+      sharing_mode: "shared",
+      sharing_started_on: Date.current
+    }
+
+    patch category_url(category), params: { category: attributes }
+
+    assert_response :success
+    assert category.reload.aligned?
+    assert_select "form input[name='confirm_transition'][value='1']"
+
+    patch category_url(category), params: { confirm_transition: "1", category: attributes }
+
+    assert_redirected_to categories_url
+    assert category.reload.shared?
+  end
+
   test "bootstrap" do
     # 22 default categories minus 2 that already exist in fixtures (Income, Food & Drink)
     assert_difference "Category.count", 20 do
@@ -178,6 +205,24 @@ class CategoriesControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to categories_path
     assert_equal target, transaction.reload.category
     assert_not Category.exists?(source.id)
+  end
+
+  test "admin cannot merge another member's private category" do
+    target = @family.categories.create!(name: "Visible merge target", color: "#111111", lucide_icon: "shapes")
+    private_source = @family.categories.create!(
+      name: "Member private merge source",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: users(:family_member)
+    )
+
+    assert_no_difference "Category.count" do
+      post perform_merge_categories_path, params: { target_id: target.id, source_ids: [ private_source.id ] }
+    end
+
+    assert_redirected_to merge_categories_path
+    assert Category.exists?(private_source.id)
   end
 
   test "merge redirects when a source category cannot be destroyed" do

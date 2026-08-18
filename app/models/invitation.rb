@@ -1,4 +1,6 @@
 class Invitation < ApplicationRecord
+  attribute :shared_transactions_visible_from, :date, default: -> { Date.current }
+
   include Encryptable
 
   belongs_to :family
@@ -13,6 +15,7 @@ class Invitation < ApplicationRecord
   validates :email, presence: true, format: { with: URI::MailTo::EMAIL_REGEXP }
   validates :role, presence: true, inclusion: { in: %w[admin member guest] }
   validates :token, presence: true, uniqueness: true
+  validates :shared_transactions_visible_from, presence: true
   validate :no_duplicate_pending_invitation_in_family
   validate :inviter_is_admin
   validate :no_other_pending_invitation, on: :create
@@ -36,7 +39,11 @@ class Invitation < ApplicationRecord
     return false if would_orphan_owned_accounts?(user)
 
     transaction do
-      user.update!(family_id: family_id, role: role.to_s)
+      user.update!(
+        family_id: family_id,
+        role: role.to_s,
+        shared_transactions_visible_from: shared_transactions_visible_from
+      )
       update!(accepted_at: Time.current)
       family.auto_share_existing_accounts_with(user)
     end

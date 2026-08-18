@@ -73,6 +73,26 @@
         <% unless category.parent? %>
           <%= f.select :parent_id, categories.pluck(:name, :id), { include_blank: t(".unassigned"), label: t(".parent_category_label") }, disabled: category.parent?, data: { action: "change->color-icon-picker#handleParentChange" } %>
         <% end %>
+
+        <% if Current.user.admin? %>
+          <% mode_options = [] %>
+          <% if category.subcategory? %>
+            <% mode_options << [t(".sharing_modes.inherit", default: "Inherit from parent"), ""] %>
+          <% end %>
+          <% mode_options.concat([
+            [t(".sharing_modes.shared", default: "Shared transactions and budget"), "shared"],
+            [t(".sharing_modes.aligned", default: "Shared definition only"), "aligned"],
+            [t(".sharing_modes.private", default: "Private"), "private"]
+          ]) %>
+          <%= f.select :sharing_mode,
+                mode_options,
+                { label: t(".sharing_mode_label", default: "Household use") } %>
+          <%= f.date_field :sharing_started_on,
+                label: t(".sharing_started_on_label", default: "Share transactions starting on") %>
+          <p class="text-xs text-secondary">
+            <%= t(".sharing_help", default: "Shared categories expose matching transaction cards from this date, including notes and attachments, but never their accounts.") %>
+          </p>
+        <% end %>
       </div>
     </section>
 

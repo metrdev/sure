@@ -82,6 +82,57 @@ class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
+  test "shared category exposes transaction without exposing its account" do
+    member = users(:family_member)
+    member.update!(shared_transactions_visible_from: Date.current.beginning_of_month)
+    member.api_keys.active.destroy_all
+    member_key = ApiKey.create!(
+      user: member,
+      name: "Shared category reader",
+      scopes: [ "read_write" ],
+      display_key: "shared_#{SecureRandom.hex(8)}"
+    )
+    shared_category = @family.categories.create!(
+      name: "Shared API groceries",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+    private_account = @family.accounts.create!(
+      owner: @user,
+      name: "Admin private checking",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    private_account.account_shares.destroy_all
+    entry = private_account.entries.create!(
+      name: "Family groceries",
+      date: Date.current,
+      amount: 24_300,
+      currency: @family.currency,
+      external_id: "provider-secret-id",
+      source: "provider-secret",
+      entryable: Transaction.new(category: shared_category)
+    )
+
+    get api_v1_transactions_url, headers: api_headers(member_key)
+    assert_response :success
+
+    transaction = JSON.parse(response.body).fetch("transactions").find { |item| item["id"] == entry.transaction.id }
+    assert transaction
+    assert_nil transaction["account"]
+    assert_not transaction.key?("external_id")
+    assert_not transaction.key?("source")
+
+    patch api_v1_transaction_url(entry.transaction),
+          params: { transaction: { name: "Must not change" } },
+          headers: api_headers(member_key)
+    assert_response :not_found
+    assert_equal "Family groceries", entry.reload.name
+  end
+
   test "should filter transactions by account_id" do
     get api_v1_transactions_url, params: { account_id: @account.id }, headers: api_headers(@api_key)
     assert_response :success
@@ -325,6 +376,34 @@ class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
     response_data = JSON.parse(response.body)
     assert_equal "Test Transaction", response_data["name"]
     assert_equal @account.id, response_data["account"]["id"]
+  end
+
+  test "cannot assign another member private category by id" do
+    private_category = @family.categories.create!(
+      name: "Member private API category",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: users(:family_member)
+    )
+
+    assert_no_difference("@account.entries.count") do
+      post api_v1_transactions_url,
+           params: {
+             transaction: {
+               account_id: @account.id,
+               name: "Invalid private category",
+               amount: 25,
+               date: Date.current,
+               currency: "USD",
+               nature: "expense",
+               category_id: private_category.id
+             }
+           },
+           headers: api_headers(@api_key)
+    end
+
+    assert_response :unprocessable_entity
   end
 
   test "should create transaction with external idempotency key" do

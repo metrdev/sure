@@ -5,6 +5,7 @@ class FamilyExport < ApplicationRecord
   STUCK_AFTER = 2.hours
 
   belongs_to :family
+  belongs_to :requested_by, class_name: "User", optional: true
 
   has_one_attached :export_file, dependent: :purge_later
 

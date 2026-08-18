@@ -12,11 +12,11 @@ class Category::DropdownsController < ApplicationController
       end
 
       if params[:transaction_id]
-        @transaction = Current.family.transactions.find(params[:transaction_id])
+        @transaction = Transaction.readable_by(Current.user).find(params[:transaction_id])
       end
     end
 
     def categories_scope
-      Current.family.categories.alphabetically
+      Current.family.categories.visible_to(Current.user).alphabetically
     end
 end

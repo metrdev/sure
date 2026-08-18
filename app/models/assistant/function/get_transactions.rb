@@ -134,7 +134,11 @@ class Assistant::Function::GetTransactions < Assistant::Function
   def call(params = {})
     search_params = params.except("order", "page")
 
-    search = Transaction::Search.new(family, filters: search_params)
+    search = Transaction::Search.new(
+      family,
+      filters: search_params,
+      transactions_scope: Transaction.readable_by(user)
+    )
     transactions_query = search.transactions_scope
     pagy_query = params["order"] == "asc" ? transactions_query.chronological : transactions_query.reverse_chronological
 
@@ -161,7 +165,7 @@ class Assistant::Function::GetTransactions < Assistant::Function
         currency: entry.currency,
         formatted_amount: entry.amount_money.abs.format,
         classification: entry.amount < 0 ? "income" : "expense",
-        account: entry.account.name,
+        account: txn.readable_through_category_by?(user) ? nil : entry.account.name,
         category: txn.category&.name,
         merchant: txn.merchant&.name,
         tags: txn.tags.map(&:name),

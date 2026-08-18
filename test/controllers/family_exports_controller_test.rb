@@ -29,7 +29,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "admin can mark a lost export as failed" do
-    export = @family.family_exports.create!
+    export = @family.family_exports.create!(requested_by: @admin)
     export.update_columns(status: "processing", updated_at: 2.hours.ago)
 
     post cancel_family_export_path(export)
@@ -39,7 +39,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "cancel refuses an export that is not presumed lost" do
-    export = @family.family_exports.create!
+    export = @family.family_exports.create!(requested_by: @admin)
     export.update_columns(status: "processing", updated_at: 5.minutes.ago)
 
     post cancel_family_export_path(export)
@@ -49,7 +49,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "non-admin cannot cancel an export" do
-    export = @family.family_exports.create!
+    export = @family.family_exports.create!(requested_by: @admin)
     export.update_columns(status: "processing", updated_at: 2.hours.ago)
 
     sign_in @non_admin
@@ -69,11 +69,12 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
 
     export = @family.family_exports.last
     assert_equal "pending", export.status
+    assert_equal @admin, export.requested_by
   end
 
   test "admin can view export list" do
-    export1 = @family.family_exports.create!(status: "completed")
-    export2 = @family.family_exports.create!(status: "processing")
+    export1 = @family.family_exports.create!(status: "completed", requested_by: @admin)
+    export2 = @family.family_exports.create!(status: "processing", requested_by: @admin)
 
     get family_exports_path
     assert_response :success
@@ -83,7 +84,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "admin can download completed export" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",
@@ -95,7 +96,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "cannot download incomplete export" do
-    export = @family.family_exports.create!(status: "processing")
+    export = @family.family_exports.create!(status: "processing", requested_by: @admin)
 
     get download_family_export_path(export)
     assert_redirected_to family_exports_path
@@ -103,7 +104,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "admin can delete export" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
 
     assert_difference "@family.family_exports.count", -1 do
       delete family_export_path(export)
@@ -114,7 +115,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "admin can delete export with attached file" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",
@@ -131,7 +132,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "admin can delete failed export with attached file" do
-    export = @family.family_exports.create!(status: "failed")
+    export = @family.family_exports.create!(status: "failed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("failed export content"),
       filename: "failed.zip",
@@ -148,7 +149,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "export file is purged when export is deleted" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     export.export_file.attach(
       io: StringIO.new("test zip content"),
       filename: "test.zip",
@@ -183,7 +184,7 @@ class FamilyExportsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "non-admin cannot delete export" do
-    export = @family.family_exports.create!(status: "completed")
+    export = @family.family_exports.create!(status: "completed", requested_by: @admin)
     sign_in @non_admin
 
     assert_no_difference "@family.family_exports.count" do

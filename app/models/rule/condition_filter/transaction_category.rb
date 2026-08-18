@@ -4,7 +4,8 @@ class Rule::ConditionFilter::TransactionCategory < Rule::ConditionFilter
   end
 
   def options
-    family.categories.alphabetically.pluck(:name, :id)
+    scope = Current.user ? family.categories.visible_to(Current.user) : family.categories
+    scope.alphabetically.pluck(:name, :id)
   end
 
   def prepare(scope)

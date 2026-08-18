@@ -73,7 +73,7 @@ class Api::V1::CategoriesControllerTest < ActionDispatch::IntegrationTest
     category = response_body["categories"].find { |c| c["name"] == @category.name }
     assert category.present?, "Should find the food_and_drink category"
 
-    required_fields = %w[id name color icon subcategories_count created_at updated_at]
+    required_fields = %w[id name color icon sharing_mode subcategories_count created_at updated_at]
     required_fields.each do |field|
       assert category.key?(field), "Category should have #{field} field"
     end
@@ -190,11 +190,59 @@ class Api::V1::CategoriesControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Coffee Runs", body["name"]
     assert_equal "#22c55e", body["color"]
     assert_equal "coffee", body["icon"]
+    assert_equal "aligned", body["sharing_mode"]
     assert_nil body["parent"]
     assert_equal 0, body["subcategories_count"]
 
     persisted = @user.family.categories.find(body["id"])
     assert_equal "coffee", persisted.lucide_icon
+    assert_equal "aligned", persisted.sharing_mode
+  end
+
+  test "member created root category is private and hidden from the household admin" do
+    member = User.create!(
+      family: @user.family,
+      email: "private-category-member@example.com",
+      password: "password123",
+      role: "member"
+    )
+    member_key = ApiKey.create!(
+      user: member,
+      name: "Member category key",
+      key: ApiKey.generate_secure_key,
+      scopes: %w[read_write],
+      source: "web"
+    )
+
+    post "/api/v1/categories",
+      params: { category: { name: "Member Private API Category", sharing_mode: "shared", sharing_started_on: Date.current } },
+      headers: api_headers(member_key)
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "private", body["sharing_mode"]
+    category = @user.family.categories.unscoped.find(body["id"])
+    assert_equal member, category.owner
+
+    get "/api/v1/categories/#{category.id}", headers: api_headers(read_only_api_key)
+    assert_response :not_found
+  end
+
+  test "admin can create a shared category with an explicit disclosure date" do
+    post "/api/v1/categories",
+      params: {
+        category: {
+          name: "Shared API Groceries",
+          sharing_mode: "shared",
+          sharing_started_on: Date.current
+        }
+      },
+      headers: api_headers(read_write_api_key)
+
+    assert_response :created
+    body = JSON.parse(response.body)
+    assert_equal "shared", body["sharing_mode"]
+    assert_equal Date.current.iso8601, body["sharing_started_on"]
   end
 
   test "create auto-suggests icon when omitted" do

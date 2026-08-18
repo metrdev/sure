@@ -44,6 +44,7 @@ class Assistant::Function::GetBudgetTest < ActiveSupport::TestCase
       prior_start = current_start << (i + 1)
       Budget.create!(
         family: @family,
+        user: @user,
         start_date: prior_start,
         end_date: prior_start.end_of_month,
         currency: @family.currency

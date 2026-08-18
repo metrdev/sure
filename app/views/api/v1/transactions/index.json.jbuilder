@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 json.transactions @transactions do |transaction|
-  json.partial! "transaction", transaction: transaction
+  json.partial! "transaction",
+                transaction: transaction,
+                account_visible: @accessible_account_ids.include?(transaction.entry.account_id)
 end
 
 json.pagination do

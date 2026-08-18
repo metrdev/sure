@@ -118,4 +118,40 @@ class Transactions::BulkUpdatesControllerTest < ActionDispatch::IntegrationTest
     transaction_entry.reload
     assert_equal [ new_tag.id ], transaction_entry.transaction.tag_ids
   end
+
+  test "bulk update does not mutate a category-only shared transaction" do
+    member = users(:family_member)
+    @user.update!(shared_transactions_visible_from: Date.current)
+    account = @user.family.accounts.create!(
+      owner: member,
+      name: "Member account for category-only bulk update",
+      accountable: Depository.new,
+      balance: 0,
+      currency: "USD"
+    )
+    category = @user.family.categories.create!(
+      name: "Shared category for category-only bulk update",
+      color: "#123456",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current
+    )
+    entry = account.entries.create!(
+      name: "Original category-only name",
+      amount: 10,
+      currency: "USD",
+      date: Date.current,
+      entryable: Transaction.new(category: category)
+    )
+
+    post transactions_bulk_update_url, params: {
+      bulk_update: {
+        entry_ids: [ entry.id ],
+        name: "Leaked mutation"
+      }
+    }
+
+    assert_redirected_to transactions_url
+    assert_equal "0 transactions updated", flash[:notice]
+    assert_equal "Original category-only name", entry.reload.name
+  end
 end

@@ -90,7 +90,7 @@ class ReportsControllerTest < ActionDispatch::IntegrationTest
 
   test "index with budget performance for current month" do
     # Create a budget for current month
-    budget = Budget.find_or_bootstrap(@family, start_date: Date.current.beginning_of_month)
+    budget = Budget.find_or_bootstrap(@family, start_date: Date.current.beginning_of_month, user: @user)
     category = @family.categories.expenses.first
 
     # Fail fast if test setup is incomplete

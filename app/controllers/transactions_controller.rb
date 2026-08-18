@@ -15,7 +15,11 @@ class TransactionsController < ApplicationController
   def index
     @q = search_params
     @accessible_account_ids = Current.user.accessible_accounts.pluck(:id)
-    @search = Transaction::Search.new(Current.family, filters: @q, accessible_account_ids: @accessible_account_ids)
+    @search = Transaction::Search.new(
+      Current.family,
+      filters: @q,
+      transactions_scope: Transaction.readable_by(Current.user)
+    )
 
     base_scope = @search.transactions_scope
                        .reverse_chronological
@@ -34,7 +38,9 @@ class TransactionsController < ApplicationController
 
     # Load split parent entries for grouped display (only when grouping is enabled)
     @split_parents = if Current.user.show_split_grouped?
-      split_parent_ids = @transactions.filter_map { |t| t.entry.parent_entry_id }.uniq
+      split_parent_ids = @transactions.filter_map do |transaction|
+        transaction.entry.parent_entry_id if @accessible_account_ids.include?(transaction.entry.account_id)
+      end.uniq
       if split_parent_ids.any?
         Entry.where(id: split_parent_ids)
              .includes(:account, entryable: [ :category, :merchant ])
@@ -499,7 +505,7 @@ class TransactionsController < ApplicationController
         .alphabetically
         .includes(:account_providers, logo_attachment: :blob)
         .to_a
-      @categories = Current.family.categories.alphabetically.to_a
+      @categories = Current.family.categories.visible_to(Current.user).alphabetically.to_a
       @merchants = Current.family.available_merchants_for(Current.user).alphabetically.to_a
       @tags = Current.family.tags.alphabetically.to_a
     end

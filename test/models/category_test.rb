@@ -159,4 +159,173 @@ class CategoryTest < ActiveSupport::TestCase
     assert lookup.key?(category.id)
     assert_not lookup.key?(0)
   end
+
+  test "subcategory inherits household mode and sharing date" do
+    parent = @family.categories.create!(
+      name: "Shared household parent",
+      color: "#123456",
+      lucide_icon: "home",
+      sharing_mode: "shared",
+      sharing_started_on: Date.new(2026, 1, 15)
+    )
+    child = @family.categories.create!(
+      name: "Inherited household child",
+      color: "#123456",
+      lucide_icon: "home",
+      parent: parent,
+      sharing_mode: nil
+    )
+
+    assert child.shared?
+    assert_equal Date.new(2026, 1, 15), child.effective_sharing_started_on
+  end
+
+  test "private categories are visible only to their owner" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    private_category = @family.categories.create!(
+      name: "Admin private category",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: admin
+    )
+
+    assert_includes @family.categories.visible_to(admin), private_category
+    assert_not_includes @family.categories.visible_to(member), private_category
+    assert_not_includes @family.categories.household, private_category
+  end
+
+  test "different users can use the same private category name" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+
+    assert @family.categories.create!(
+      name: "Personal hobbies",
+      color: "#123456",
+      lucide_icon: "gamepad-2",
+      sharing_mode: "private",
+      owner: admin
+    )
+    assert @family.categories.create!(
+      name: "Personal hobbies",
+      color: "#654321",
+      lucide_icon: "music",
+      sharing_mode: "private",
+      owner: member
+    )
+  end
+
+  test "private and household namespaces can use the same category name" do
+    admin = users(:family_admin)
+
+    assert @family.categories.create!(
+      name: "Household and private duplicate",
+      color: "#123456",
+      lucide_icon: "users",
+      sharing_mode: "aligned"
+    )
+    assert @family.categories.create!(
+      name: "Household and private duplicate",
+      color: "#654321",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: admin
+    )
+  end
+
+  test "shared category becomes per-member private copies and archives its household limit" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    category = @family.categories.create!(
+      name: "Shared category to privatize",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+    admin_transaction = accounts(:depository).entries.create!(
+      name: "Admin shared purchase",
+      date: Date.current,
+      amount: 100,
+      currency: @family.currency,
+      entryable: Transaction.new(category: category)
+    ).transaction
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member private account for category transition",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    member_transaction = member_account.entries.create!(
+      name: "Member shared purchase",
+      date: Date.current,
+      amount: 200,
+      currency: @family.currency,
+      entryable: Transaction.new(category: category)
+    ).transaction
+    household_budget = Budget.find_or_bootstrap(@family, start_date: Date.current)
+    household_limit = household_budget.budget_categories.find_by!(category: category)
+    household_limit.update!(budgeted_spending: 30_000)
+
+    admin_copy = Category::ChangeSharingMode.call!(
+      category: category,
+      attributes: { sharing_mode: "private" },
+      owner: admin
+    )
+    member_copy = @family.categories.private_for(member).find_by!(name: category.name)
+
+    assert_equal admin_copy, admin_transaction.reload.category
+    assert_equal member_copy, member_transaction.reload.category
+    assert Category.unscoped.find(category.id).archived_at
+    assert_equal 30_000, BudgetCategory.find(household_limit.id).budgeted_spending
+    assert BudgetCategory.find(household_limit.id).archived_at
+  end
+
+  test "aligned personal limits follow private category copies" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    category = @family.categories.create!(
+      name: "Aligned category to privatize",
+      color: "#654321",
+      lucide_icon: "car",
+      sharing_mode: "aligned"
+    )
+    accounts(:depository).entries.create!(
+      name: "Admin aligned purchase",
+      date: Date.current,
+      amount: 100,
+      currency: @family.currency,
+      entryable: Transaction.new(category: category)
+    )
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member private account for aligned transition",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    member_account.entries.create!(
+      name: "Member aligned purchase",
+      date: Date.current,
+      amount: 200,
+      currency: @family.currency,
+      entryable: Transaction.new(category: category)
+    )
+    admin_budget = Budget.find_or_bootstrap(@family, start_date: Date.current, user: admin)
+    member_budget = Budget.find_or_bootstrap(@family, start_date: Date.current, user: member)
+    admin_budget.budget_categories.find_by!(category: category).update!(budgeted_spending: 12_000)
+    member_budget.budget_categories.find_by!(category: category).update!(budgeted_spending: 18_000)
+
+    admin_copy = Category::ChangeSharingMode.call!(
+      category: category,
+      attributes: { sharing_mode: "private" },
+      owner: admin
+    )
+    member_copy = @family.categories.private_for(member).find_by!(name: category.name)
+
+    assert_equal 12_000, admin_budget.budget_categories.find_by!(category: admin_copy).budgeted_spending
+    assert_equal 18_000, member_budget.budget_categories.find_by!(category: member_copy).budgeted_spending
+  end
 end

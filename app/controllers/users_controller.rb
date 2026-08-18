@@ -76,6 +76,17 @@ class UsersController < ApplicationController
     redirect_back_or_to settings_profile_path
   end
 
+  def household_access
+    unless Current.user.admin?
+      redirect_to settings_profile_path, alert: t("accounts.not_authorized")
+      return
+    end
+
+    member = Current.family.users.find(params[:id])
+    member.update!(params.require(:user).permit(:shared_transactions_visible_from))
+    redirect_to settings_profile_path, notice: t("users.update.success")
+  end
+
   private
     def handle_redirect(notice)
       case user_params[:redirect_to]

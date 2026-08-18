@@ -24,8 +24,63 @@ class Transaction < ApplicationRecord
   ].freeze
 
   validate :validate_attachments, if: -> { attachments.attached? }
+  validate :category_matches_account_owner, if: -> { category && entry }
 
   accepts_nested_attributes_for :taggings, allow_destroy: true
+
+  class << self
+    def readable_by(user)
+      with_shared_category_access(user, user&.family&.accounts&.accessible_by(user)&.select(:id))
+    end
+
+    def reportable_by(user)
+      with_shared_category_access(user, user&.finance_accounts&.select(:id))
+    end
+
+    def with_shared_category_access(user, account_ids)
+      return none unless user&.active?
+
+      active_owner_ids = user.family.users.where(active: true).select(:id)
+
+      base_scope = joins(entry: :account)
+        .left_joins(category: :parent)
+        .where(accounts: { family_id: user.family_id })
+
+      account_access = base_scope.where(entries: { account_id: account_ids })
+      category_access = base_scope
+        .merge(Entry.excluding_split_parents)
+        .where(accounts: { owner_id: active_owner_ids })
+        .where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'shared'")
+        .where("entries.date >= COALESCE(categories.sharing_started_on, parents_categories.sharing_started_on)")
+        .where("entries.date >= ?", user.shared_transactions_visible_from)
+
+      account_access.or(category_access)
+    end
+
+    def shared_for_household(family)
+      active_owner_ids = family.users.where(active: true).select(:id)
+
+      joins(entry: :account)
+        .left_joins(category: :parent)
+        .merge(Entry.excluding_split_parents)
+        .where(accounts: { family_id: family.id, owner_id: active_owner_ids })
+        .where("COALESCE(categories.sharing_mode, parents_categories.sharing_mode) = 'shared'")
+        .where("entries.date >= COALESCE(categories.sharing_started_on, parents_categories.sharing_started_on)")
+    end
+  end
+
+  def readable_by?(user)
+    self.class.readable_by(user).exists?(id: id)
+  end
+
+  def readable_through_category_by?(user)
+    return false unless user&.active? && category&.shared?
+    return false unless entry.account.family_id == user.family_id
+    return false unless entry.account.owner&.active?
+
+    access_date = [ category.effective_sharing_started_on, user.shared_transactions_visible_from ].compact.max
+    access_date.present? && entry.date >= access_date && entry.account.permission_for(user).nil?
+  end
 
   after_save :clear_merchant_unlinked_association, if: :merchant_id_previously_changed?
 
@@ -369,6 +424,10 @@ class Transaction < ApplicationRecord
           errors.add(:attachments, :invalid_format, index: index + 1, file_format: attachment.content_type)
         end
       end
+    end
+
+    def category_matches_account_owner
+      errors.add(:category, "is not available to the account owner") unless category.usable_for_account?(entry.account)
     end
 
     def potential_posted_match_data

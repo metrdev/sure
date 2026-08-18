@@ -1,6 +1,8 @@
 class User < ApplicationRecord
   include Encryptable
 
+  attribute :shared_transactions_visible_from, :date, default: -> { Date.current }
+
   # Allow nil password for SSO-only users (JIT provisioning).
   # Custom validation ensures password is present for non-SSO registration.
   has_secure_password validations: false
@@ -25,6 +27,7 @@ class User < ApplicationRecord
   has_many :sessions, dependent: :destroy
   has_many :chats, dependent: :destroy
   has_many :api_keys, dependent: :destroy
+  has_many :requested_family_exports, class_name: "FamilyExport", foreign_key: :requested_by_id, dependent: :destroy
   has_many :webauthn_credentials, dependent: :destroy
   has_many :mobile_devices, dependent: :destroy
   has_many :invitations, foreign_key: :inviter_id, dependent: :destroy
@@ -33,6 +36,8 @@ class User < ApplicationRecord
   has_many :oidc_identities, dependent: :destroy
   has_many :sso_audit_logs, dependent: :nullify
   has_many :owned_accounts, class_name: "Account", foreign_key: :owner_id
+  has_many :owned_categories, class_name: "Category", foreign_key: :owner_id
+  has_many :personal_budgets, class_name: "Budget", dependent: :destroy
   has_many :account_shares, dependent: :destroy
   has_many :shared_accounts, through: :account_shares, source: :account
   accepts_nested_attributes_for :family, update_only: true
@@ -44,6 +49,7 @@ class User < ApplicationRecord
   validates :default_period, inclusion: { in: Period::PERIODS.keys }
   validates :default_account_order, inclusion: { in: AccountOrder::ORDERS.keys }
   validates :locale, inclusion: { in: I18n.available_locales.map(&:to_s) }, allow_nil: true
+  validates :shared_transactions_visible_from, presence: true
 
   # Password is required on create unless the user is being created via SSO JIT.
   # SSO JIT users have password_digest = nil and authenticate via OIDC only.
@@ -71,6 +77,7 @@ class User < ApplicationRecord
 
   before_validation :apply_ui_layout_defaults
   before_validation :apply_role_based_ui_defaults
+  before_destroy :destroy_private_categories
 
   # Returns the appropriate role for a new user creating a family.
   # The very first user of an instance becomes super_admin; subsequent users
@@ -129,6 +136,13 @@ class User < ApplicationRecord
 
   def admin?
     super_admin? || role == "admin"
+  end
+
+  def destroy_private_categories
+    family.categories.private_for(self)
+      .to_a
+      .sort_by { |category| category.parent_id.present? ? 0 : 1 }
+      .each(&:destroy!)
   end
 
   def accessible_accounts

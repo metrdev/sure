@@ -6,7 +6,7 @@ class Assistant::Function::CreateCategory < Assistant::Function
 
     def description
       <<~INSTRUCTIONS
-        Creates a new category for the user's family.
+        Creates a new category the user is allowed to manage.
 
         Categories support two levels of hierarchy: a top-level category can have subcategories,
         but subcategories cannot have children. Provide parent_id (from get_categories) to make
@@ -56,14 +56,19 @@ class Assistant::Function::CreateCategory < Assistant::Function
 
     if params["parent_id"].present?
       return error("parent_not_found", "Parent category with id '#{params["parent_id"]}' not found.") unless valid_uuid?(params["parent_id"])
-      parent = family.categories.find_by(id: params["parent_id"])
+      parent = manageable_categories.find_by(id: params["parent_id"])
       return error("parent_not_found", "Parent category with id '#{params["parent_id"]}' not found.") unless parent
       attrs[:parent] = parent
     end
 
     category = family.categories.new(attrs)
+    unless category.parent
+      category.sharing_mode = user.admin? ? "aligned" : "private"
+      category.owner = user unless user.admin?
+    end
 
     if category.save
+      family.budgets.find_each(&:sync_budget_categories)
       { success: true, category: serialize(category), message: "Category '#{category.name_with_parent}' created." }
     else
       error("validation_failed", category.errors.full_messages.join("; "))
@@ -71,6 +76,10 @@ class Assistant::Function::CreateCategory < Assistant::Function
   end
 
   private
+    def manageable_categories
+      user.admin? ? family.categories.visible_to(user) : family.categories.private_for(user)
+    end
+
     def serialize(c)
       { id: c.id, name: c.name, name_with_parent: c.name_with_parent, color: c.color, icon: c.lucide_icon, parent_id: c.parent_id }
     end

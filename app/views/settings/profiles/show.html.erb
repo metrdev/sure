@@ -52,8 +52,15 @@
             </div>
             <p class="text-primary font-medium text-sm"><%= user.display_name %></p>
             <%= render DS::Pill.new(label: t("users.roles.#{user.role}", default: user.role.humanize), tone: :gray, marker: false, size: :sm) %>
+            <% if Current.user.admin? %>
+              <%= form_with model: user, url: household_access_user_path(user), method: :patch, class: "ml-auto flex items-end gap-2" do |form| %>
+                <%= form.date_field :shared_transactions_visible_from,
+                      label: t(".shared_transactions_visible_from", default: "Shared from") %>
+                <%= render DS::Button.new(text: t(".save", default: "Save"), type: :submit, variant: :secondary) %>
+              <% end %>
+            <% end %>
             <% if Current.user.admin? && user != Current.user %>
-              <div class="ml-auto">
+              <div>
                 <%= render DS::Button.new(
                   variant: "icon",
                   icon: "x",

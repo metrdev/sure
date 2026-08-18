@@ -11,7 +11,7 @@
       <% if entry.transaction.transfer? %>
         <%= icon "arrow-left-right", size: "sm", class: "text-secondary" %>
       <% end %>
-      <% if entry.linked? %>
+      <% if entry.linked? && !category_only_transaction_access?(entry) %>
         <span title="<%= t("transactions.transaction.linked_with_provider", provider: entry.account.provider_name&.titleize) %>" class="text-secondary">
           <%= icon("refresh-ccw", size: "sm") %>
         </span>

@@ -1744,7 +1744,7 @@ class Family::DataImporterTest < ActiveSupport::TestCase
     assert_not_nil budget
     assert_equal Date.parse("2024-01-01"), budget.start_date
     assert_equal Date.parse("2024-01-31"), budget.end_date
-    assert_equal 3000.0, budget.budgeted_spending.to_f
+    assert_equal 3000.0, budget[:budgeted_spending].to_f
     assert_equal 5000.0, budget.expected_income.to_f
   end
 

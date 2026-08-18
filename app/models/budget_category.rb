@@ -4,7 +4,7 @@ class BudgetCategory < ApplicationRecord
   belongs_to :budget
   belongs_to :category
 
-  validates :budget_id, uniqueness: { scope: :category_id }
+  validates :budget_id, uniqueness: { scope: :category_id, conditions: -> { where(archived_at: nil) } }
 
   monetize :budgeted_spending, :available_to_spend, :avg_monthly_expense, :median_monthly_expense, :actual_spending
 

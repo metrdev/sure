@@ -663,6 +663,81 @@ class QifImportTest < ActiveSupport::TestCase
     assert_equal child, mappables["Home:Home Improvement"]
   end
 
+  test "category mappings hide another account owner's private categories" do
+    member = users(:family_member)
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member import account",
+      balance: 0,
+      currency: "USD",
+      accountable: Depository.new
+    )
+    private_category = @family.categories.create!(
+      name: "Admin-only imported category",
+      color: "#123456",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: users(:family_admin)
+    )
+    member_import = QifImport.create!(family: @family, account: member_account)
+    member_import.rows.create!(category: private_category.name, currency: "USD", source_row_number: 1)
+    mapping = member_import.mappings.create!(key: private_category.name, type: "Import::CategoryMapping")
+
+    assert_nil Import::CategoryMapping.mappables_by_key(member_import)[private_category.name]
+    assert_not_includes mapping.selectable_values.map(&:last), private_category.id
+  end
+
+  test "member import creates hierarchical categories as a private root" do
+    member = users(:family_member)
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member hierarchical import account",
+      balance: 0,
+      currency: "USD",
+      accountable: Depository.new
+    )
+    member_import = QifImport.create!(family: @family, account: member_account)
+    mapping = member_import.mappings.create!(
+      key: "Imported parent:Imported child",
+      type: "Import::CategoryMapping",
+      create_when_empty: true
+    )
+
+    mapping.create_mappable!
+
+    assert mapping.mappable.private?
+    assert_equal member, mapping.mappable.owner
+    assert_nil mapping.mappable.parent
+    assert_not @family.categories.exists?(name: "Imported parent")
+  end
+
+  test "category mapping prefers the account owner's private duplicate" do
+    member = users(:family_member)
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member duplicate category import",
+      balance: 0,
+      currency: "USD",
+      accountable: Depository.new
+    )
+    household_category = @family.categories.create!(
+      name: "Duplicate import category", color: "#123456", lucide_icon: "users", sharing_mode: "aligned"
+    )
+    private_category = @family.categories.create!(
+      name: household_category.name,
+      color: "#654321",
+      lucide_icon: "lock",
+      sharing_mode: "private",
+      owner: member
+    )
+    member_import = QifImport.create!(family: @family, account: member_account)
+    member_import.rows.create!(category: household_category.name, currency: "USD", source_row_number: 1)
+
+    mapped = Import::CategoryMapping.mappables_by_key(member_import)[household_category.name]
+
+    assert_equal private_category, mapped
+  end
+
   # ── Investment (Invst) QIF: parser ──────────────────────────────────────────
 
   test "parse_securities returns all securities from investment QIF" do

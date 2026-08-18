@@ -292,7 +292,7 @@ end
       transfer_outflow_money: Money.new(0, "USD")
     )
 
-    Transaction::Search.expects(:new).with(family, filters: {}, accessible_account_ids: [ account.id ]).returns(search)
+    Transaction::Search.expects(:new).with(family, filters: {}, transactions_scope: kind_of(ActiveRecord::Relation)).returns(search)
     search.expects(:totals).once.returns(totals)
 
     get transactions_url
@@ -316,7 +316,7 @@ end
       transfer_outflow_money: Money.new(0, "USD")
     )
 
-    Transaction::Search.expects(:new).with(family, filters: { "categories" => [ "Food" ], "types" => [ "expense" ] }, accessible_account_ids: [ account.id ]).returns(search)
+    Transaction::Search.expects(:new).with(family, filters: { "categories" => [ "Food" ], "types" => [ "expense" ] }, transactions_scope: kind_of(ActiveRecord::Relation)).returns(search)
     search.expects(:totals).once.returns(totals)
 
     get transactions_url(q: { categories: [ "Food" ], types: [ "expense" ] })
@@ -339,7 +339,7 @@ end
       transfer_outflow_money: Money.new(3000, "USD")
     )
 
-    Transaction::Search.expects(:new).with(family, filters: { "types" => [ "transfer" ] }, accessible_account_ids: [ account.id ]).returns(search)
+    Transaction::Search.expects(:new).with(family, filters: { "types" => [ "transfer" ] }, transactions_scope: kind_of(ActiveRecord::Relation)).returns(search)
     search.expects(:totals).once.returns(totals)
 
     get transactions_url(q: { types: [ "transfer" ] })

@@ -45,7 +45,7 @@ class Assistant::Function::UpdateCategory < Assistant::Function
 
   def call(params = {})
     return error("not_found", "Category with id '#{params["id"]}' not found.") unless valid_uuid?(params["id"])
-    category = family.categories.find_by(id: params["id"])
+    category = manageable_categories.find_by(id: params["id"])
     return error("not_found", "Category with id '#{params["id"]}' not found.") unless category
 
     attrs = {}
@@ -63,6 +63,10 @@ class Assistant::Function::UpdateCategory < Assistant::Function
   end
 
   private
+    def manageable_categories
+      user.admin? ? family.categories.visible_to(user) : family.categories.private_for(user)
+    end
+
     def serialize(c)
       { id: c.id, name: c.name, name_with_parent: c.name_with_parent, color: c.color, icon: c.lucide_icon, parent_id: c.parent_id }
     end

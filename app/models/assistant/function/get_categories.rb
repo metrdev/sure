@@ -6,7 +6,7 @@ class Assistant::Function::GetCategories < Assistant::Function
 
     def description
       <<~INSTRUCTIONS
-        Returns all categories for the user's family, ordered alphabetically by hierarchy.
+        Returns categories visible to the user, ordered alphabetically by hierarchy.
 
         Each entry includes id, name, color, icon, parent_id (null for top-level), and
         name_with_parent (e.g. "Food & Drink > Restaurants"). Use this before creating
@@ -16,7 +16,7 @@ class Assistant::Function::GetCategories < Assistant::Function
   end
 
   def call(params = {})
-    categories = family.categories.alphabetically_by_hierarchy
+    categories = family.categories.visible_to(user).alphabetically_by_hierarchy
 
     {
       categories: categories.map { |c|
@@ -27,7 +27,9 @@ class Assistant::Function::GetCategories < Assistant::Function
           color: c.color,
           icon: c.lucide_icon,
           parent_id: c.parent_id,
-          is_subcategory: c.subcategory?
+          is_subcategory: c.subcategory?,
+          sharing_mode: c.effective_sharing_mode,
+          sharing_started_on: c.effective_sharing_started_on
         }
       },
       total: categories.size

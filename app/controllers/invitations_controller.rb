@@ -65,7 +65,7 @@ class InvitationsController < ApplicationController
   private
 
     def invitation_params
-      params.require(:invitation).permit(:email, :role)
+      params.require(:invitation).permit(:email, :role, :shared_transactions_visible_from)
     end
 
     # Persist the invitation, treating a raced partial-unique-index violation as

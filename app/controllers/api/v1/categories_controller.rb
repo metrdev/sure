@@ -9,7 +9,8 @@ class Api::V1::CategoriesController < Api::V1::BaseController
 
   def index
     family = current_resource_owner.family
-    categories_query = family.categories.includes(:parent, :subcategories).alphabetically
+    @category_viewer = current_resource_owner
+    categories_query = family.categories.visible_to(current_resource_owner).includes(:parent, :subcategories).alphabetically
 
     # Apply filters
     categories_query = apply_filters(categories_query)
@@ -35,6 +36,7 @@ class Api::V1::CategoriesController < Api::V1::BaseController
   end
 
   def show
+    @category_viewer = current_resource_owner
     render :show
   rescue => e
     Rails.logger.error "CategoriesController#show error: #{e.message}"
@@ -50,7 +52,9 @@ class Api::V1::CategoriesController < Api::V1::BaseController
     family = current_resource_owner.family
     attrs = category_params
 
-    if attrs[:parent_id].present? && !family.categories.exists?(id: attrs[:parent_id])
+    visible_parents = family.categories.visible_to(current_resource_owner)
+    visible_parents = visible_parents.private_for(current_resource_owner) unless current_resource_owner.admin?
+    if attrs[:parent_id].present? && !visible_parents.exists?(id: attrs[:parent_id])
       return render json: {
         error: "unprocessable_entity",
         message: "Parent must be a category in your family"
@@ -58,9 +62,29 @@ class Api::V1::CategoriesController < Api::V1::BaseController
     end
 
     @category = family.categories.new(attrs)
+    if @category.parent_id.present? && !current_resource_owner.admin?
+      @category.sharing_mode = nil
+      @category.owner = nil
+      @category.sharing_started_on = nil
+    elsif current_resource_owner.admin?
+      if @category.sharing_mode.blank? && @category.parent_id.blank?
+        @category.sharing_mode = "aligned"
+      end
+      if @category.sharing_mode.blank?
+        @category.owner = nil
+        @category.sharing_started_on = nil
+      else
+        @category.owner = @category.sharing_mode == "private" ? current_resource_owner : nil
+      end
+    else
+      @category.sharing_mode = "private"
+      @category.owner = current_resource_owner
+    end
     @category.lucide_icon = Category.suggested_icon(@category.name) if @category.lucide_icon.blank?
 
     if @category.save
+      family.budgets.find_each(&:sync_budget_categories)
+      @category_viewer = current_resource_owner
       render :show, status: :created
     else
       render json: {
@@ -74,7 +98,7 @@ class Api::V1::CategoriesController < Api::V1::BaseController
 
     def set_category
       family = current_resource_owner.family
-      @category = family.categories.includes(:parent, :subcategories).find(params[:id])
+      @category = family.categories.visible_to(current_resource_owner).includes(:parent, :subcategories).find(params[:id])
     rescue ActiveRecord::RecordNotFound
       render json: {
         error: "not_found",
@@ -91,7 +115,9 @@ class Api::V1::CategoriesController < Api::V1::BaseController
     end
 
     def category_params
-      permitted = params.require(:category).permit(:name, :color, :icon, :parent_id)
+      fields = [ :name, :color, :icon, :parent_id ]
+      fields.concat([ :sharing_mode, :sharing_started_on ]) if current_resource_owner.admin?
+      permitted = params.require(:category).permit(*fields)
       icon = permitted.delete(:icon)
       permitted[:lucide_icon] = icon if icon.present?
       permitted

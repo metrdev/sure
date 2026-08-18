@@ -34,7 +34,7 @@ class PlaidAccount::Transactions::Processor
           account.family.categories.bootstrap!
         end
 
-        account.family.categories
+        account.family.categories.available_for_account(account)
       end
     end
 
