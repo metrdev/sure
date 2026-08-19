@@ -367,6 +367,13 @@ ru:
     transaction:
       reject_family_transfer: Не мой перевод
       reject_family_transfer_confirmation: Скрыть этот семейный перевод из ваших операций?
+      accept_family_transfer: Принять перевод
+      family_transfer_from: Перевод от %{name}
+      family_transfer_to: Перевод для %{name}
+      family_transfer_rejected: Получатель отклонил
+      family_transfer_accepted: Принят
+      unlink_family_transfer: Отвязать
+      unlink_family_transfer_confirmation: Отвязать стороны семейного перевода? Обе банковские операции останутся на своих счетах.
       activity_type_tooltip: Тип инвестиционной активности
       linked_with_provider: Связано с %{provider}
       pending: В ожидании
@@ -382,6 +389,9 @@ ru:
     family_transfer_rejection:
       success: Семейный перевод скрыт из ваших операций
       failure: Эта операция не является вашим семейным переводом
+    family_transfer_unlink:
+      success: Стороны семейного перевода отвязаны; обе операции сохранены
+      failure: Эта операция не является принятым семейным переводом
     transfer_match:
       auto_matched: Автоматически сопоставлено
       auto_matched_short: А/С

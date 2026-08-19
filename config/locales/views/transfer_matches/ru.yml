@@ -14,6 +14,9 @@ ru:
       select_method: Выберите метод для сопоставления ваших операций.
       target_account: Целевой счёт
     new:
+      accept_family_transfer: Принять перевод
+      family_sender: Отправитель
+      family_transfer: Семейный перевод
       create_transfer_match: Создать соответствие перевода
       from_account: Со счёта
       from_account_named: 'Со счёта: %{name}'

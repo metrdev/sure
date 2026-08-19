@@ -18,8 +18,8 @@ json.amount_cents amount_cents
 json.signed_amount_cents(classification == "income" ? amount_cents : -amount_cents)
 
 json.currency transaction.entry.currency
-json.name transaction.entry.name
-json.notes transaction.entry.notes
+json.name(transaction.family_counterparty_user_id.present? ? transaction.family_transfer_name_for(viewer) : transaction.entry.name)
+json.notes(family_transfer_mirror ? nil : transaction.entry.notes)
 if account_visible
   json.external_id transaction.entry.external_id
   json.source transaction.entry.source
@@ -71,7 +71,7 @@ if transaction.family_counterparty_user_id.present?
   json.family_counterparty do
     json.id counterparty.id
     json.name counterparty.display_name
-    json.status(family_transfer_mirror ? "pending" : "sent")
+    json.status transaction.family_transfer_status_for(viewer)
   end
 else
   json.family_counterparty nil

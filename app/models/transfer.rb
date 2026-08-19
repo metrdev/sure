@@ -73,6 +73,15 @@ class Transfer < ApplicationRecord
     to_account&.liability?
   end
 
+  def family_transfer?
+    sender = outflow_transaction&.entry&.account&.owner
+    recipient = inflow_transaction&.entry&.account&.owner
+
+    sender.present? && recipient.present? &&
+      outflow_transaction.family_counterparty_user_id == recipient.id &&
+      inflow_transaction.family_counterparty_user_id == sender.id
+  end
+
   def loan_payment?
     outflow_transaction&.kind == "loan_payment"
   end
@@ -104,11 +113,14 @@ class Transfer < ApplicationRecord
 
   def destroy!
     Transfer.transaction do
+      was_family_transfer = family_transfer?
       [ inflow_transaction, outflow_transaction ].each do |transaction|
         next if transaction.nil?
         next unless Transaction.exists?(transaction.id)
         begin
-          transaction.update!(kind: "standard")
+          attributes = { kind: "standard" }
+          attributes.merge!(family_counterparty_user: nil, family_transfer_rejected_at: nil) if was_family_transfer
+          transaction.update!(attributes)
         rescue ActiveRecord::RecordNotFound
         rescue NoMethodError
           next
@@ -162,13 +174,14 @@ class Transfer < ApplicationRecord
 
       errors.add(:base, :opposite_amounts) unless inflow_amount_raw.negative? && outflow_amount_raw.positive?
 
-      if inflow_entry.currency == outflow_entry.currency
+      if inflow_entry.currency == outflow_entry.currency && !family_transfer?
         errors.add(:base, :opposite_amounts) if inflow_amount_raw + outflow_amount_raw != 0
       end
     end
 
     def transfer_within_date_range
       return unless inflow_transaction&.entry && outflow_transaction&.entry
+      return if family_transfer?
 
       date_diff = (inflow_transaction.entry.date - outflow_transaction.entry.date).abs
       max_days = status == "confirmed" ? 30 : 4

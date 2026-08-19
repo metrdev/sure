@@ -483,6 +483,7 @@ Rails.application.routes.draw do
       post :dismiss_duplicate
       post :unlock
       patch :reject_family_transfer
+      patch :unlink_family_transfer
       patch :tags, action: :update_tags
     end
   end

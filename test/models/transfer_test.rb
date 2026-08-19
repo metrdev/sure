@@ -58,6 +58,46 @@ class TransferTest < ActiveSupport::TestCase
     assert_equal "Must have opposite amounts", transfer.errors.full_messages.first
   end
 
+  test "family transfer keeps each member's actual amount and date" do
+    sender = users(:family_admin)
+    recipient = users(:family_member)
+    family = sender.family
+    sender_account = family.accounts.create!(owner: sender, name: "Sender private", balance: 0, currency: family.currency, accountable: Depository.new)
+    recipient_account = family.accounts.create!(owner: recipient, name: "Recipient private", balance: 0, currency: family.currency, accountable: Depository.new)
+    sender_account.account_shares.destroy_all
+    recipient_account.account_shares.destroy_all
+    outflow = create_transaction(date: 40.days.ago.to_date, account: sender_account, amount: 30_000)
+    inflow = create_transaction(date: Date.current, account: recipient_account, amount: -29_900)
+    outflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
+    inflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: sender)
+
+    transfer = Transfer.create!(inflow_transaction: inflow.transaction, outflow_transaction: outflow.transaction, status: "confirmed")
+
+    assert transfer.family_transfer?
+    assert_equal 30_000, transfer.outflow_transaction.entry.amount
+    assert_equal(-29_900, transfer.inflow_transaction.entry.amount)
+  end
+
+  test "unlinking family transfer preserves both operations and removes family assignment" do
+    sender = users(:family_admin)
+    recipient = users(:family_member)
+    family = sender.family
+    sender_account = family.accounts.create!(owner: sender, name: "Sender unlink", balance: 0, currency: family.currency, accountable: Depository.new)
+    recipient_account = family.accounts.create!(owner: recipient, name: "Recipient unlink", balance: 0, currency: family.currency, accountable: Depository.new)
+    outflow = create_transaction(account: sender_account, amount: 100)
+    inflow = create_transaction(account: recipient_account, amount: -100)
+    outflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
+    inflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: sender)
+    transfer = Transfer.create!(inflow_transaction: inflow.transaction, outflow_transaction: outflow.transaction, status: "confirmed")
+
+    assert_no_difference [ "Transaction.count", "Entry.count" ] do
+      transfer.destroy!
+    end
+
+    assert_nil outflow.transaction.reload.family_counterparty_user_id
+    assert_nil inflow.transaction.reload.family_counterparty_user_id
+  end
+
   test "transfer dates must be within 4 days of each other" do
     outflow_entry = create_transaction(date: Date.current, account: accounts(:depository), amount: 500)
     inflow_entry = create_transaction(date: 5.days.ago.to_date, account: accounts(:credit_card), amount: -500)

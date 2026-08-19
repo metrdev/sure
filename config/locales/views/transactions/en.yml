@@ -138,6 +138,13 @@ en:
     transaction:
       reject_family_transfer: Not mine
       reject_family_transfer_confirmation: Hide this family transfer from your records?
+      accept_family_transfer: Accept transfer
+      family_transfer_from: Transfer from %{name}
+      family_transfer_to: Transfer to %{name}
+      family_transfer_rejected: Recipient rejected
+      family_transfer_accepted: Accepted
+      unlink_family_transfer: Unlink
+      unlink_family_transfer_confirmation: Unlink the family-transfer sides? Both bank transactions will remain on their accounts.
       pending: Pending
       pending_tooltip: Pending transaction — may change when posted
       linked_with_provider: Linked with %{provider}
@@ -158,6 +165,9 @@ en:
     family_transfer_rejection:
       success: Family transfer hidden from your records
       failure: This transaction is not your family transfer
+    family_transfer_unlink:
+      success: Family-transfer sides unlinked; both transactions were preserved
+      failure: This transaction is not an accepted family transfer
     pending_duplicate_merge:
       possible_duplicate: Duplicate?
       possible_duplicate_short: Dup?

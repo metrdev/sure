@@ -137,7 +137,8 @@ class Assistant::Function::GetTransactions < Assistant::Function
     search = Transaction::Search.new(
       family,
       filters: search_params,
-      transactions_scope: Transaction.readable_by(user)
+      transactions_scope: Transaction.readable_by(user),
+      viewer: user
     )
     transactions_query = search.transactions_scope
     pagy_query = params["order"] == "asc" ? transactions_query.chronological : transactions_query.reverse_chronological
@@ -158,18 +159,19 @@ class Assistant::Function::GetTransactions < Assistant::Function
 
     normalized_transactions = paginated_transactions.map do |txn|
       entry = txn.entry
+      family_transfer_mirror = txn.family_transfer_mirror_for?(user)
       {
-        name: entry.name,
+        name: txn.family_counterparty_user_id.present? ? txn.family_transfer_name_for(user) : entry.name,
         date: entry.date,
-        amount: entry.amount.abs,
+        amount: txn.display_amount_for(user).abs,
         currency: entry.currency,
         formatted_amount: entry.amount_money.abs.format,
-        classification: entry.amount < 0 ? "income" : "expense",
-        account: txn.readable_through_category_by?(user) ? nil : entry.account.name,
+        classification: txn.display_amount_for(user) < 0 ? "income" : "expense",
+        account: family_transfer_mirror || txn.readable_through_category_by?(user) ? nil : entry.account.name,
         category: txn.category&.name,
-        merchant: txn.merchant&.name,
-        tags: txn.tags.map(&:name),
-        is_transfer: txn.transfer?
+        merchant: family_transfer_mirror ? nil : txn.merchant&.name,
+        tags: family_transfer_mirror ? [] : txn.tags.map(&:name),
+        is_transfer: txn.transfer? && !txn.transfer&.family_transfer?
       }
     end
 

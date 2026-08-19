@@ -4,6 +4,9 @@ en:
     create:
       success: Transfer created
     new:
+      accept_family_transfer: Accept transfer
+      family_sender: Sender
+      family_transfer: Family transfer
       header:
         title: Match transfer or payment
         subtitle: Match the corresponding transaction in another account or create one if it doesn't exist.

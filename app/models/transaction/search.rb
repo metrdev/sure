@@ -16,12 +16,13 @@ class Transaction::Search
   attribute :tags, array: true
   attribute :active_accounts_only, :boolean, default: true
 
-  attr_reader :family, :accessible_account_ids, :base_transactions_scope
+  attr_reader :family, :accessible_account_ids, :base_transactions_scope, :viewer
 
-  def initialize(family, filters: {}, accessible_account_ids: nil, transactions_scope: nil)
+  def initialize(family, filters: {}, accessible_account_ids: nil, transactions_scope: nil, viewer: Current.user)
     @family = family
     @accessible_account_ids = accessible_account_ids
     @base_transactions_scope = transactions_scope || family.transactions
+    @viewer = viewer
     super(filters)
   end
 
@@ -60,22 +61,31 @@ class Transaction::Search
         tax_advantaged_ids = family.tax_advantaged_account_ids
         scope = scope.where.not(accounts: { id: tax_advantaged_ids }) if tax_advantaged_ids.present?
 
+        effective_amount_sql = if viewer
+          ActiveRecord::Base.sanitize_sql_array([
+            "CASE WHEN transactions.family_counterparty_user_id = ? AND accounts.owner_id <> ? THEN -entries.amount ELSE entries.amount END",
+            viewer.id, viewer.id
+          ])
+        else
+          "entries.amount"
+        end
+
         result = scope
                   .select(
                     ActiveRecord::Base.sanitize_sql_array([
-                      "COALESCE(SUM(CASE WHEN entries.amount >= 0 AND transactions.kind NOT IN (?) THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as expense_total",
+                      "COALESCE(SUM(CASE WHEN #{effective_amount_sql} >= 0 AND (transactions.kind NOT IN (?) OR transactions.family_counterparty_user_id IS NOT NULL) THEN ABS((#{effective_amount_sql}) * COALESCE(er.rate, 1)) ELSE 0 END), 0) as expense_total",
                       Transaction::TRANSFER_KINDS
                     ]),
                     ActiveRecord::Base.sanitize_sql_array([
-                      "COALESCE(SUM(CASE WHEN entries.amount < 0 AND transactions.kind NOT IN (?) THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as income_total",
+                      "COALESCE(SUM(CASE WHEN #{effective_amount_sql} < 0 AND (transactions.kind NOT IN (?) OR transactions.family_counterparty_user_id IS NOT NULL) THEN ABS((#{effective_amount_sql}) * COALESCE(er.rate, 1)) ELSE 0 END), 0) as income_total",
                       Transaction::TRANSFER_KINDS
                     ]),
                     ActiveRecord::Base.sanitize_sql_array([
-                      "COALESCE(SUM(CASE WHEN entries.amount < 0 AND transactions.kind IN (?) THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as transfer_inflow_total",
+                      "COALESCE(SUM(CASE WHEN entries.amount < 0 AND transactions.kind IN (?) AND transactions.family_counterparty_user_id IS NULL THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as transfer_inflow_total",
                       Transaction::TRANSFER_KINDS
                     ]),
                     ActiveRecord::Base.sanitize_sql_array([
-                      "COALESCE(SUM(CASE WHEN entries.amount >= 0 AND transactions.kind IN (?) THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as transfer_outflow_total",
+                      "COALESCE(SUM(CASE WHEN entries.amount >= 0 AND transactions.kind IN (?) AND transactions.family_counterparty_user_id IS NULL THEN ABS(entries.amount * COALESCE(er.rate, 1)) ELSE 0 END), 0) as transfer_outflow_total",
                       Transaction::TRANSFER_KINDS
                     ]),
                     "COUNT(entries.id) as transactions_count"
@@ -106,6 +116,7 @@ class Transaction::Search
       family.entries_cache_version,
       family.categories.maximum(:updated_at)&.to_i,
       family.users.maximum(:updated_at)&.to_i,
+      viewer&.id,
       Digest::SHA256.hexdigest(family.tax_advantaged_account_ids.sort.to_json), # stable across processes
       accessible_account_ids ? Digest::SHA256.hexdigest(accessible_account_ids.sort.to_json) : "all",
       Digest::SHA256.hexdigest(base_transactions_scope.to_sql)
@@ -170,20 +181,31 @@ class Transaction::Search
 
       case types.sort
       when [ "transfer" ]
-        query.where(kind: Transaction::TRANSFER_KINDS)
+        query.where(kind: Transaction::TRANSFER_KINDS, family_counterparty_user_id: nil)
       when [ "expense" ]
-        query.where("entries.amount >= 0").where.not(kind: Transaction::TRANSFER_KINDS)
+        query.where("#{effective_amount_sql} >= 0")
+          .where("transactions.kind NOT IN (?) OR transactions.family_counterparty_user_id IS NOT NULL", Transaction::TRANSFER_KINDS)
       when [ "income" ]
-        query.where("entries.amount < 0").where.not(kind: Transaction::TRANSFER_KINDS)
+        query.where("#{effective_amount_sql} < 0")
+          .where("transactions.kind NOT IN (?) OR transactions.family_counterparty_user_id IS NOT NULL", Transaction::TRANSFER_KINDS)
       when [ "expense", "transfer" ]
-        query.where("entries.amount >= 0 OR transactions.kind IN (?)", Transaction::TRANSFER_KINDS)
+        query.where("#{effective_amount_sql} >= 0 OR (transactions.kind IN (?) AND transactions.family_counterparty_user_id IS NULL)", Transaction::TRANSFER_KINDS)
       when [ "income", "transfer" ]
-        query.where("entries.amount < 0 OR transactions.kind IN (?)", Transaction::TRANSFER_KINDS)
+        query.where("#{effective_amount_sql} < 0 OR (transactions.kind IN (?) AND transactions.family_counterparty_user_id IS NULL)", Transaction::TRANSFER_KINDS)
       when [ "expense", "income" ]
-        query.where.not(kind: Transaction::TRANSFER_KINDS)
+        query.where("transactions.kind NOT IN (?) OR transactions.family_counterparty_user_id IS NOT NULL", Transaction::TRANSFER_KINDS)
       else
         query
       end
+    end
+
+    def effective_amount_sql
+      return "entries.amount" unless viewer
+
+      ActiveRecord::Base.sanitize_sql_array([
+        "CASE WHEN transactions.family_counterparty_user_id = ? AND accounts.owner_id <> ? THEN -entries.amount ELSE entries.amount END",
+        viewer.id, viewer.id
+      ])
     end
 
     def apply_merchant_filter(query, merchants)

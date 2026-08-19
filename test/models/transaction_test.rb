@@ -309,6 +309,16 @@ class TransactionTest < ActiveSupport::TestCase
     assert_equal(-10_000, transaction.display_amount_for(member))
     assert_nil account.permission_for(member)
 
+    pending_totals = Transaction::Search.new(
+      family,
+      transactions_scope: Transaction.readable_by(member).where(id: transaction.id),
+      viewer: member
+    ).totals
+    assert_equal 10_000, pending_totals.income_money.amount
+    assert_equal 0, pending_totals.expense_money.amount
+    assert_includes Transaction::Search.new(family, filters: { types: [ "income" ] }, transactions_scope: Transaction.readable_by(member), viewer: member).transactions_scope, transaction
+    assert_not_includes Transaction::Search.new(family, filters: { types: [ "expense" ] }, transactions_scope: Transaction.readable_by(member), viewer: member).transactions_scope, transaction
+
     member_account = family.accounts.create!(
       owner: member,
       name: "Recipient account",
@@ -333,10 +343,23 @@ class TransactionTest < ActiveSupport::TestCase
     assert_not_includes Transaction.readable_by(member), transaction
     assert_includes Transaction.readable_by(member), incoming
 
+    accepted_totals = Transaction::Search.new(
+      family,
+      transactions_scope: Transaction.readable_by(member).where(id: [ transaction.id, incoming.id ]),
+      viewer: member
+    ).totals
+    assert_equal 10_000, accepted_totals.income_money.amount
+    assert_equal 1, accepted_totals.count
+
     transaction.transfer.destroy!
     transaction.reload
     transaction.update!(family_transfer_rejected_at: Time.current)
     assert_not_includes Transaction.readable_by(member), transaction
     assert_includes Transaction.readable_by(admin), transaction
+
+    transaction.family_counterparty_user_id = member.id
+    transaction.save!
+    assert_nil transaction.family_transfer_rejected_at
+    assert_includes Transaction.readable_by(member), transaction
   end
 end

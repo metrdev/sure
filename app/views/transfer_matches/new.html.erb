@@ -1,5 +1,8 @@
 <%= render DS::Dialog.new do |dialog| %>
-  <% dialog.with_header(title: t(".header.title"), subtitle: t(".header.subtitle")) %>
+  <% dialog.with_header(
+       title: @family_transfer_mirror ? t(".accept_family_transfer") : t(".header.title"),
+       subtitle: @family_transfer_mirror ? @entry.transaction.family_transfer_name_for(Current.user) : t(".header.subtitle")
+     ) %>
   <% dialog.with_body do %>
     <%= styled_form_with(
           url: transaction_transfer_match_path(@entry),
@@ -10,15 +13,19 @@
       <section class="space-y-4">
         <div class="space-y-2">
           <h2 class="text-sm font-medium text-secondary">
-            <%= @entry.amount.positive? ? t(".from_account_named", name: @entry.account.name) : t(".from_account") %>
+            <%= if @family_transfer_mirror
+                  t(".family_sender")
+                else
+                  @entry.amount.positive? ? t(".from_account_named", name: @entry.account.name) : t(".from_account")
+                end %>
           </h2>
 
           <% if @entry.amount.positive? %>
             <%= f.select(
                   :entry_id,
-                  [[entry_name_detailed(@entry), @entry.id]],
+                  [[@family_transfer_mirror ? [@entry.date, format_money(@entry.amount_money), @entry.transaction.family_transfer_name_for(Current.user)].join(" • ") : entry_name_detailed(@entry), @entry.id]],
                   {
-                    label: t(".outflow_transaction"),
+                    label: @family_transfer_mirror ? t(".family_transfer") : t(".outflow_transaction"),
                     selected: @entry.id,
                   },
                   disabled: true
@@ -57,7 +64,7 @@
         </div>
       </section>
 
-      <%= f.submit t(".create_transfer_match") %>
+      <%= f.submit(@family_transfer_mirror ? t(".accept_family_transfer") : t(".create_transfer_match")) %>
     <% end %>
   <% end %>
 <% end %>

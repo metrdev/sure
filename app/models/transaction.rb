@@ -99,6 +99,30 @@ class Transaction < ApplicationRecord
     transfer.nil? && family_counterparty_user_id == user&.id && entry&.account&.owner_id != user&.id && family_transfer_rejected_at.nil?
   end
 
+  def family_transfer_counterparty_for(user)
+    family_transfer_mirror_for?(user) ? entry.account.owner : family_counterparty_user
+  end
+
+  def family_transfer_name_for(user)
+    counterparty = family_transfer_counterparty_for(user)
+    return entry.name unless counterparty
+
+    key = display_amount_for(user).negative? ? "from" : "to"
+    I18n.t("transactions.transaction.family_transfer_#{key}", name: counterparty.display_name, default: "Transfer #{key} %{name}")
+  end
+
+  def family_transfer_status_for(user)
+    return "rejected" if entry.account.owner_id == user&.id && family_transfer_rejected_at.present?
+    return "pending" if family_transfer_mirror_for?(user)
+    return "accepted" if transfer.present? && family_counterparty_user_id.present?
+    "sent" if family_counterparty_user_id.present?
+  end
+
+  def family_counterparty_user_id=(value)
+    self.family_transfer_rejected_at = nil if value.present?
+    super
+  end
+
   def display_amount_for(user)
     family_transfer_mirror_for?(user) ? -entry.amount : entry.amount
   end

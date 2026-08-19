@@ -2,6 +2,7 @@
 
 <% transaction = entry.entryable %>
 <% family_transfer_mirror = transaction.family_transfer_mirror_for?(Current.user) %>
+<% family_transfer_name = transaction.family_counterparty_user_id.present? ? transaction.family_transfer_name_for(Current.user) : entry.name %>
 <% category_only_access = category_only_transaction_access?(entry) || family_transfer_mirror %>
 <% transaction_security_logo_url = category_only_access ? nil : transaction.activity_security&.display_logo_url %>
 
@@ -69,10 +70,10 @@
                 <div class="flex items-center gap-1 min-w-0">
                   <div class="truncate flex-shrink">
                     <% if family_transfer_mirror %>
-                      <span><%= entry.name %></span>
-                    <% elsif transaction.transfer? && !category_only_access %>
+                      <span><%= family_transfer_name %></span>
+                    <% elsif transaction.transfer? && !category_only_access && !transaction.transfer&.family_transfer? %>
                       <%= link_to(
-                            entry.name,
+                            family_transfer_name,
                             transaction.transfer.present? ? transfer_path(transaction.transfer) : entry_path(entry),
                             data: {
                               turbo_frame: "drawer",
@@ -82,7 +83,7 @@
                           ) %>
                     <% else %>
                       <%= link_to(
-                            entry.name,
+                            family_transfer_name,
                             in_split_group ? entry_path(entry, grouped: true) : entry_path(entry),
                             data: {
                               turbo_frame: "drawer",
@@ -99,6 +100,10 @@
                       <%= render DS::Pill.new(label: counterparty.display_name, tone: :neutral, marker: false, icon: "users") %>
                     <% end %>
                     <% if family_transfer_mirror %>
+                      <%= link_to t("transactions.transaction.accept_family_transfer", default: "Accept transfer"),
+                            new_transaction_transfer_match_path(transaction),
+                            data: { turbo_frame: "drawer", turbo_prefetch: false },
+                            class: "text-xs text-primary hover:underline" %>
                       <%= button_to reject_family_transfer_transaction_path(transaction),
                             method: :patch,
                             class: "text-xs text-secondary hover:text-primary hover:underline",
@@ -106,6 +111,15 @@
                             form: { data: { turbo_confirm: t("transactions.transaction.reject_family_transfer_confirmation") } } do %>
                         <%= t("transactions.transaction.reject_family_transfer") %>
                       <% end %>
+                    <% elsif transaction.family_transfer_status_for(Current.user) == "rejected" %>
+                      <%= render DS::Pill.new(label: t("transactions.transaction.family_transfer_rejected", default: "Rejected"), tone: :warning, marker: false, icon: "circle-x") %>
+                    <% elsif transaction.family_transfer_status_for(Current.user) == "accepted" %>
+                      <%= render DS::Pill.new(label: t("transactions.transaction.family_transfer_accepted", default: "Accepted"), tone: :success, marker: false, icon: "circle-check") %>
+                      <%= button_to t("transactions.transaction.unlink_family_transfer", default: "Unlink"),
+                            unlink_family_transfer_transaction_path(transaction),
+                            method: :patch,
+                            class: "text-xs text-secondary hover:text-primary hover:underline",
+                            form: { data: { turbo_confirm: t("transactions.transaction.unlink_family_transfer_confirmation") } } %>
                     <% end %>
                     <% if transaction.one_time? %>
                       <span class="text-orange-500" title="One-time <%= entry.amount.negative? ? "income" : "expense" %> (excluded from averages)">

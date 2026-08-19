@@ -173,7 +173,8 @@ class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
     assert_nil item.fetch("merchant")
     assert_empty item.fetch("tags")
     assert_equal @user.id, item.dig("family_counterparty", "id")
-    assert_equal "Monthly transfer", item.fetch("notes")
+    assert_equal entry.transaction.family_transfer_name_for(member), item.fetch("name")
+    assert_nil item.fetch("notes")
     assert_nil item["source"]
     assert_nil item["external_id"]
   end

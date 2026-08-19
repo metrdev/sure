@@ -251,6 +251,21 @@ class TransactionsController < ApplicationController
     end
   end
 
+  def unlink_family_transfer
+    transaction = Transaction
+      .joins(entry: :account)
+      .where(accounts: { owner_id: Current.user.id })
+      .find(params[:id])
+    transfer = transaction.transfer
+
+    if transfer&.family_transfer?
+      transfer.destroy!
+      redirect_back_or_to transactions_path, notice: t("transactions.family_transfer_unlink.success")
+    else
+      redirect_back_or_to transactions_path, alert: t("transactions.family_transfer_unlink.failure")
+    end
+  end
+
   def convert_to_trade
     @transaction = accessible_transactions.includes(entry: :account).find(params[:id])
     @entry = @transaction.entry
