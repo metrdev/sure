@@ -1,6 +1,8 @@
 require "test_helper"
 
 class TransfersControllerTest < ActionDispatch::IntegrationTest
+  include EntriesTestHelper
+
   setup do
     sign_in users(:family_admin)
   end
@@ -314,6 +316,30 @@ class TransfersControllerTest < ActionDispatch::IntegrationTest
     assert_raises(ActiveRecord::RecordNotFound) do
       transfer.reload
     end
+  end
+
+  test "recipient can confirm a matched family transfer without access to sender account" do
+    sender = users(:family_admin)
+    recipient = users(:family_member)
+    family = sender.family
+    sender_account = family.accounts.create!(owner: sender, name: "Private sender", balance: 0, currency: family.currency, accountable: Depository.new)
+    recipient_account = family.accounts.create!(owner: recipient, name: "Private recipient", balance: 0, currency: family.currency, accountable: Depository.new)
+    outflow = create_transaction(account: sender_account, amount: 30_000)
+    inflow = create_transaction(account: recipient_account, amount: -30_000)
+    outflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
+    inflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: sender)
+    transfer = Transfer.create!(inflow_transaction: inflow.transaction, outflow_transaction: outflow.transaction, status: "pending")
+    sign_in recipient
+
+    patch transfer_url(transfer), params: { transfer: { status: "confirmed" } }
+
+    assert_redirected_to transactions_url
+    assert transfer.reload.confirmed?
+
+    patch transfer_url(transfer), params: { transfer: { status: "confirmed", notes: "Sender account leak" } }
+
+    assert_response :not_found
+    assert_nil transfer.reload.notes
   end
 
   test "mark_as_recurring creates a recurring transfer" do

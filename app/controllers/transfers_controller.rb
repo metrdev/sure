@@ -66,13 +66,17 @@ class TransfersController < ApplicationController
   end
 
   def update
-    outflow_account = @transfer.outflow_transaction.entry.account
-    return unless require_account_permission!(outflow_account, redirect_path: transactions_url)
+    unless @family_transfer_status_only_update
+      outflow_account = @transfer.outflow_transaction.entry.account
+      return unless require_account_permission!(outflow_account, redirect_path: transactions_url)
+    end
 
     Transfer.transaction do
       update_transfer_status
-      update_transfer_fees_and_amount
-      update_transfer_details unless transfer_update_params[:status] == "rejected"
+      unless @family_transfer_status_only_update
+        update_transfer_fees_and_amount
+        update_transfer_details unless transfer_update_params[:status] == "rejected"
+      end
     end
 
     respond_to do |format|
@@ -156,11 +160,26 @@ class TransfersController < ApplicationController
         .merge(Account.accessible_by(Current.user))
         .select(:id)
 
-      @transfer = Transfer
-                    .where(id: params[:id])
+      scope = Transfer.where(id: params[:id])
+      @transfer = scope
                     .where(inflow_transaction_id: accessible_transaction_ids)
                     .where(outflow_transaction_id: accessible_transaction_ids)
-                    .first!
+                    .first
+      return if @transfer
+
+      owned_transaction_ids = Current.family.transactions
+        .joins(entry: :account)
+        .where(accounts: { owner_id: Current.user.id })
+        .select(:id)
+      @transfer = scope.where(inflow_transaction_id: owned_transaction_ids)
+        .or(scope.where(outflow_transaction_id: owned_transaction_ids))
+        .first!
+
+      raise ActiveRecord::RecordNotFound unless action_name == "update" &&
+                                                @transfer.family_transfer? &&
+                                                family_transfer_status_only_update?
+
+      @family_transfer_status_only_update = true
     end
 
     def transfer_params
@@ -178,6 +197,10 @@ class TransfersController < ApplicationController
 
     def transfer_update_params
       params.require(:transfer).permit(:notes, :status, :category_id, :amount, :source_fee_amount, :destination_fee_amount)
+    end
+
+    def family_transfer_status_only_update?
+      transfer_update_params.keys == [ "status" ] && transfer_update_params[:status].in?(%w[confirmed rejected])
     end
 
     def update_transfer_status
