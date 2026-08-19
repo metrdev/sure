@@ -4,6 +4,7 @@ class Transaction < ApplicationRecord
   belongs_to :category, optional: true
   belongs_to :merchant, optional: true
   belongs_to :transfer, optional: true
+  belongs_to :family_counterparty_user, class_name: "User", optional: true
 
   has_many :taggings, as: :taggable, dependent: :destroy
   has_many :tags, through: :taggings
@@ -25,6 +26,7 @@ class Transaction < ApplicationRecord
 
   validate :validate_attachments, if: -> { attachments.attached? }
   validate :category_matches_account_owner, if: -> { category && entry }
+  validate :family_counterparty_configuration
 
   accepts_nested_attributes_for :taggings, allow_destroy: true
 
@@ -54,7 +56,18 @@ class Transaction < ApplicationRecord
         .where("entries.date >= COALESCE(categories.sharing_started_on, parents_categories.sharing_started_on)")
         .where("entries.date >= ?", user.shared_transactions_visible_from)
 
-      account_access.or(category_access)
+      counterparty_access = base_scope
+        .merge(Entry.excluding_split_parents)
+        .where(family_counterparty_user_id: user.id, family_transfer_rejected_at: nil)
+        .where(<<~SQL.squish)
+          NOT EXISTS (
+            SELECT 1 FROM transfers
+            WHERE transfers.inflow_transaction_id = transactions.id
+               OR transfers.outflow_transaction_id = transactions.id
+          )
+        SQL
+
+      account_access.or(category_access).or(counterparty_access)
     end
 
     def shared_for_household(family)
@@ -80,6 +93,18 @@ class Transaction < ApplicationRecord
 
     access_date = [ category.effective_sharing_started_on, user.shared_transactions_visible_from ].compact.max
     access_date.present? && entry.date >= access_date && entry.account.permission_for(user).nil?
+  end
+
+  def family_transfer_mirror_for?(user)
+    transfer.nil? && family_counterparty_user_id == user&.id && entry&.account&.owner_id != user&.id && family_transfer_rejected_at.nil?
+  end
+
+  def display_amount_for(user)
+    family_transfer_mirror_for?(user) ? -entry.amount : entry.amount
+  end
+
+  def display_amount_money_for(user)
+    Money.new(display_amount_for(user), entry.currency)
   end
 
   after_save :clear_merchant_unlinked_association, if: :merchant_id_previously_changed?
@@ -428,6 +453,15 @@ class Transaction < ApplicationRecord
 
     def category_matches_account_owner
       errors.add(:category, "is not available to the account owner") unless category.usable_for_account?(entry.account)
+    end
+
+    def family_counterparty_configuration
+      return if family_counterparty_user_id.blank?
+
+      errors.add(:category, "must be the money transfers category") unless category&.money_transfers?
+      transaction_family_id = entry&.account&.family_id || category&.family_id
+      errors.add(:family_counterparty_user, "must belong to the same family") unless family_counterparty_user&.family_id == transaction_family_id
+      errors.add(:family_counterparty_user, "cannot be the account owner") if family_counterparty_user_id == entry&.account&.owner_id
     end
 
     def potential_posted_match_data

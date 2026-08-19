@@ -314,6 +314,17 @@ class Family < ApplicationRecord
     IncomeStatement.new(self, user: user)
   end
 
+  def money_transfers_category
+    Category.unscoped.find_or_create_by!(family_id: id, system_key: Category::MONEY_TRANSFERS_SYSTEM_KEY) do |category|
+      I18n.with_locale(locale) do
+        category.name = I18n.t("models.category.defaults.money_transfers", default: "Money transfers")
+      end
+      category.color = Category::TRANSFER_COLOR
+      category.lucide_icon = "handshake"
+      category.sharing_mode = "aligned"
+    end
+  end
+
   # Returns the Investment Contributions category for this family, creating it if it doesn't exist.
   # This is used for auto-categorizing transfers to investment accounts.
   # Always uses the family's locale to ensure consistent category naming across all users.

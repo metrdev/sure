@@ -280,4 +280,63 @@ class TransactionTest < ActiveSupport::TestCase
     assert_not_includes readable_ids, parent.transaction.id
     assert_not_includes readable_ids, private_child.transaction.id
   end
+
+  test "family money transfer is a mirrored income for its recipient without account access" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    family = admin.family
+    account = family.accounts.create!(
+      owner: admin,
+      name: "Private family transfer account",
+      balance: 0,
+      currency: family.currency,
+      accountable: Depository.new
+    )
+    account.account_shares.destroy_all
+    transaction = account.entries.create!(
+      name: "Cash for family",
+      date: Date.current,
+      amount: 10_000,
+      currency: family.currency,
+      entryable: Transaction.new(
+        category: family.money_transfers_category,
+        family_counterparty_user: member
+      )
+    ).transaction
+
+    assert_includes Transaction.readable_by(member), transaction
+    assert transaction.family_transfer_mirror_for?(member)
+    assert_equal(-10_000, transaction.display_amount_for(member))
+    assert_nil account.permission_for(member)
+
+    member_account = family.accounts.create!(
+      owner: member,
+      name: "Recipient account",
+      balance: 0,
+      currency: family.currency,
+      accountable: Depository.new
+    )
+    member_account.account_shares.destroy_all
+    incoming = member_account.entries.create!(
+      name: "Cash from family",
+      date: Date.current,
+      amount: -10_000,
+      currency: family.currency,
+      entryable: Transaction.new(
+        category: family.money_transfers_category,
+        family_counterparty_user: admin
+      )
+    ).transaction
+    Transfer.create!(outflow_transaction: transaction, inflow_transaction: incoming, status: "confirmed")
+
+    assert_not transaction.reload.family_transfer_mirror_for?(member)
+    assert_not_includes Transaction.readable_by(member), transaction
+    assert_includes Transaction.readable_by(member), incoming
+
+    transaction.transfer.destroy!
+    transaction.reload
+    transaction.update!(family_transfer_rejected_at: Time.current)
+    assert_not_includes Transaction.readable_by(member), transaction
+    assert_includes Transaction.readable_by(admin), transaction
+  end
 end

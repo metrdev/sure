@@ -121,6 +121,22 @@ class IncomeStatement
     totals(transactions_scope: scope, date_range: period.date_range)
   end
 
+  # Shared expenses paid from another household member's account are visible
+  # to the viewer, but are not income on any real account.  The dashboard uses
+  # this calculated amount as the balancing "Family" source of funds.
+  def family_contribution_for(period)
+    return Money.new(0, family.currency) unless user
+
+    scope = Transaction.shared_for_household(family)
+      .where(id: base_transactions_scope.select(:id))
+      .where.not(accounts: { owner_id: user.id })
+      .visible
+      .excluding_pending
+      .in_period(period)
+
+    totals(transactions_scope: scope, date_range: period.date_range).expense_money
+  end
+
   # Accounts actually reflected in totals/totals_for: visible, not excluded
   # from reports, not tax-advantaged, and (when scoped to a user) included in
   # that user's finances. Callers offering an account filter (e.g. a
@@ -264,12 +280,20 @@ class IncomeStatement
       sql_hash = Digest::MD5.hexdigest(transactions_scope.to_sql)
 
       Rails.cache.fetch([
-        "income_statement", "totals_query", "v3", family.id, user&.id, included_account_ids_hash, sql_hash,
+        "income_statement", "totals_query", "v4", family.id, user&.id, included_account_ids_hash, sql_hash,
         date_range.begin, date_range.end, family.entries_cache_version,
         family.accounts.maximum(:updated_at)&.to_i,
         family.categories.maximum(:updated_at)&.to_i,
         family.users.maximum(:updated_at)&.to_i
-      ]) { Totals.new(family, transactions_scope: transactions_scope, date_range: date_range, included_account_ids: included_account_ids).call }
+      ]) do
+        Totals.new(
+          family,
+          transactions_scope: transactions_scope,
+          date_range: date_range,
+          included_account_ids: included_account_ids,
+          viewer_user_id: user&.id
+        ).call
+      end
     end
 
     def monetizable_currency

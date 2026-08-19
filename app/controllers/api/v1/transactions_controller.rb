@@ -8,6 +8,7 @@ class Api::V1::TransactionsController < Api::V1::BaseController
   before_action :ensure_write_scope, only: [ :create, :update, :destroy ]
   before_action :set_readable_transaction, only: :show
   before_action :set_writable_transaction, only: [ :update, :destroy ]
+  before_action :set_transaction_viewer, only: [ :index, :show, :create, :update ]
 
   def index
     family = current_resource_owner.family
@@ -301,9 +302,15 @@ class Api::V1::TransactionsController < Api::V1::BaseController
       if params[:type].present?
         case params[:type].downcase
         when "income"
-          query = query.where("entries.amount < 0")
+          query = query.where(
+            "entries.amount < 0 OR (transactions.family_counterparty_user_id = :viewer_id AND accounts.owner_id <> :viewer_id AND transactions.family_transfer_rejected_at IS NULL)",
+            viewer_id: current_resource_owner.id
+          )
         when "expense"
-          query = query.where("entries.amount > 0")
+          query = query.where("entries.amount > 0").where.not(
+            family_counterparty_user_id: current_resource_owner.id,
+            family_transfer_rejected_at: nil
+          )
         end
       end
 
@@ -324,7 +331,7 @@ class Api::V1::TransactionsController < Api::V1::BaseController
     def transaction_params
       params.require(:transaction).permit(
         :date, :amount, :name, :description, :notes, :currency,
-        :category_id, :merchant_id, :nature, tag_ids: []
+        :category_id, :merchant_id, :family_counterparty_user_id, :nature, tag_ids: []
       )
     end
 
@@ -343,6 +350,7 @@ class Api::V1::TransactionsController < Api::V1::BaseController
         entryable_attributes: {
           category_id: transaction_params[:category_id],
           merchant_id: transaction_params[:merchant_id],
+          family_counterparty_user_id: transaction_params[:family_counterparty_user_id],
           tag_ids: transaction_params[:tag_ids] || []
         }
       }
@@ -362,7 +370,8 @@ class Api::V1::TransactionsController < Api::V1::BaseController
         entryable_attributes: {
           id: @entry.entryable_id,
           category_id: transaction_params[:category_id],
-          merchant_id: transaction_params[:merchant_id]
+          merchant_id: transaction_params[:merchant_id],
+          family_counterparty_user_id: transaction_params[:family_counterparty_user_id]
           # Note: tag_ids handled separately in update action to distinguish
           # "not provided" from "explicitly set to empty"
         }.compact_blank
@@ -448,6 +457,10 @@ class Api::V1::TransactionsController < Api::V1::BaseController
     def safe_page_param
       page = params[:page].to_i
       page > 0 ? page : 1
+    end
+
+    def set_transaction_viewer
+      @transaction_viewer = current_resource_owner
     end
 
     def safe_per_page_param

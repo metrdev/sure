@@ -131,6 +131,41 @@ class PagesControllerTest < ActionDispatch::IntegrationTest
     assert_select "[data-controller='bar-chart']"
   end
 
+  test "dashboard includes other member shared expenses and balances them with family income" do
+    member = users(:family_member)
+    member.update!(shared_transactions_visible_from: Date.current.beginning_of_month)
+    category = @family.categories.create!(
+      name: "Shared dashboard groceries",
+      color: "#123456",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+    account = @family.accounts.create!(
+      owner: @user,
+      name: "Unshared dashboard account",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    account.account_shares.destroy_all
+    create_transaction(account: account, name: "Family groceries", amount: 15_000, date: Date.current, category: category)
+
+    sign_in member
+    get root_path
+
+    assert_response :ok
+    chart = css_select("[data-controller='sankey-chart']").first
+    sankey = JSON.parse(chart["data-sankey-chart-data-value"])
+    family_node = sankey.fetch("nodes").find { |node| node.fetch("id") == "family_income_node" }
+    assert_equal 15_000, family_node.fetch("value")
+    assert sankey.fetch("nodes").any? { |node| node.fetch("name") == category.name }
+
+    current_bar = money_flow_bars.find { |bar| bar["highlighted"] }
+    assert_operator current_bar.fetch("income"), :>=, 15_000
+    assert_operator current_bar.fetch("expense"), :>=, 15_000
+  end
+
   test "dashboard scopes money flow widget to selected month and accounts" do
     # Dedicated account (rather than @family.accounts.first) so fixture
     # transactions on other accounts can't skew the computed totals.

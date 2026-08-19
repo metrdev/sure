@@ -136,6 +136,8 @@ en:
       reject_match: Reject match
       transfer_confirmed: Transfer is confirmed
     transaction:
+      reject_family_transfer: Not mine
+      reject_family_transfer_confirmation: Hide this family transfer from your records?
       pending: Pending
       pending_tooltip: Pending transaction — may change when posted
       linked_with_provider: Linked with %{provider}
@@ -153,6 +155,9 @@ en:
     dismiss_duplicate:
       success: Kept as separate transactions
       failure: Could not dismiss duplicate suggestion
+    family_transfer_rejection:
+      success: Family transfer hidden from your records
+      failure: This transaction is not your family transfer
     pending_duplicate_merge:
       possible_duplicate: Duplicate?
       possible_duplicate_short: Dup?

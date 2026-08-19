@@ -83,7 +83,9 @@ class UsersController < ApplicationController
     end
 
     member = Current.family.users.find(params[:id])
-    member.update!(params.require(:user).permit(:shared_transactions_visible_from))
+    attributes = params.require(:user).permit(:shared_transactions_visible_from)
+    attributes[:shared_transactions_visible_from] = parse_family_date(attributes[:shared_transactions_visible_from]) if attributes[:shared_transactions_visible_from].present?
+    member.update!(attributes)
     redirect_to settings_profile_path, notice: t("users.update.success")
   end
 

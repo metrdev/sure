@@ -26,7 +26,7 @@ class CategoriesController < ApplicationController
   end
 
   def merge
-    @categories = Current.family.categories.visible_to(Current.user).alphabetically
+    @categories = Current.family.categories.visible_to(Current.user).where(system_key: nil).alphabetically
 
     render layout: turbo_frame_request? ? false : "settings"
   end
@@ -94,6 +94,11 @@ class CategoriesController < ApplicationController
   end
 
   def destroy
+    if @category.money_transfers?
+      redirect_back_or_to categories_path, alert: t("categories.destroy.system_category", default: "Системную категорию удалить нельзя")
+      return
+    end
+
     @category.destroy
     sync_budgets
 
@@ -102,7 +107,7 @@ class CategoriesController < ApplicationController
 
   def destroy_all
     scope = Current.user.admin? ? Current.family.categories.visible_to(Current.user) : Current.family.categories.private_for(Current.user)
-    scope.to_a.sort_by { |category| category.parent_id.present? ? 0 : 1 }.each(&:destroy!)
+    scope.where(system_key: nil).to_a.sort_by { |category| category.parent_id.present? ? 0 : 1 }.each(&:destroy!)
     sync_budgets
     redirect_back_or_to categories_path, notice: t(".success")
   end
@@ -127,6 +132,7 @@ class CategoriesController < ApplicationController
 
     sources = visible_categories.where(id: permitted_params[:source_ids])
     return redirect_to merge_categories_path, alert: t(".invalid_categories") unless sources.any?
+    return redirect_to merge_categories_path, alert: t(".invalid_categories") if target.money_transfers? || sources.any?(&:money_transfers?)
 
     merger = Category::Merger.new(family: Current.family, target_category: target, source_categories: sources)
     return redirect_to merge_categories_path, alert: t(".no_categories_selected") unless merger.merge!
@@ -165,7 +171,12 @@ class CategoriesController < ApplicationController
     def category_params
       permitted = [ :name, :color, :parent_id, :lucide_icon ]
       permitted.concat([ :sharing_mode, :sharing_started_on ]) if Current.user.admin?
-      params.require(:category).permit(*permitted)
+      permitted = [ :name, :color, :lucide_icon ] if @category&.money_transfers?
+      attributes = params.require(:category).permit(*permitted)
+      if attributes[:sharing_started_on].present?
+        attributes[:sharing_started_on] = parse_family_date(attributes[:sharing_started_on])
+      end
+      attributes
     end
 
     def apply_category_ownership(category)

@@ -70,11 +70,11 @@
 
       <div class="space-y-2">
         <%= f.text_field :name, placeholder: t(".placeholder"), required: true, autofocus: true, label: t(".name_label"), data: { color_avatar_target: "name" } %>
-        <% unless category.parent? %>
+        <% unless category.parent? || category.money_transfers? %>
           <%= f.select :parent_id, categories.pluck(:name, :id), { include_blank: t(".unassigned"), label: t(".parent_category_label") }, disabled: category.parent?, data: { action: "change->color-icon-picker#handleParentChange" } %>
         <% end %>
 
-        <% if Current.user.admin? %>
+        <% if Current.user.admin? && !category.money_transfers? %>
           <% mode_options = [] %>
           <% if category.subcategory? %>
             <% mode_options << [t(".sharing_modes.inherit", default: "Inherit from parent"), ""] %>
@@ -87,7 +87,9 @@
           <%= f.select :sharing_mode,
                 mode_options,
                 { label: t(".sharing_mode_label", default: "Household use") } %>
-          <%= f.date_field :sharing_started_on,
+          <%= f.text_field :sharing_started_on,
+                value: category.sharing_started_on&.strftime(Current.family.date_format),
+                placeholder: Family::DATE_FORMATS.find { |_, value| value == Current.family.date_format }&.first,
                 label: t(".sharing_started_on_label", default: "Share transactions starting on") %>
           <p class="text-xs text-secondary">
             <%= t(".sharing_help", default: "Shared categories expose matching transaction cards from this date, including notes and attachments, but never their accounts.") %>

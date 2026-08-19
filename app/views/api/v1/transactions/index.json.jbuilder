@@ -3,6 +3,7 @@
 json.transactions @transactions do |transaction|
   json.partial! "transaction",
                 transaction: transaction,
+                viewer: @transaction_viewer,
                 account_visible: @accessible_account_ids.include?(transaction.entry.account_id)
 end
 

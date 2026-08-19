@@ -54,7 +54,10 @@
             <%= render DS::Pill.new(label: t("users.roles.#{user.role}", default: user.role.humanize), tone: :gray, marker: false, size: :sm) %>
             <% if Current.user.admin? %>
               <%= form_with model: user, url: household_access_user_path(user), method: :patch, class: "ml-auto flex items-end gap-2" do |form| %>
-                <%= form.date_field :shared_transactions_visible_from,
+                <%= form.text_field :shared_transactions_visible_from,
+                      value: user.shared_transactions_visible_from&.strftime(Current.family.date_format),
+                      placeholder: Family::DATE_FORMATS.find { |_, value| value == Current.family.date_format }&.first,
+                      class: "form-field__input",
                       label: t(".shared_transactions_visible_from", default: "Shared from") %>
                 <%= render DS::Button.new(text: t(".save", default: "Save"), type: :submit, variant: :secondary) %>
               <% end %>

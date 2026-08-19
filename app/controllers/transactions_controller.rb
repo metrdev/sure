@@ -235,6 +235,17 @@ class TransactionsController < ApplicationController
     redirect_back_or_to transactions_path
   end
 
+  def reject_family_transfer
+    transaction = Transaction.readable_by(Current.user).find(params[:id])
+
+    if transaction.family_transfer_mirror_for?(Current.user)
+      transaction.update!(family_transfer_rejected_at: Time.current)
+      redirect_back_or_to transactions_path, notice: t("transactions.family_transfer_rejection.success")
+    else
+      redirect_back_or_to transactions_path, alert: t("transactions.family_transfer_rejection.failure")
+    end
+  end
+
   def convert_to_trade
     @transaction = accessible_transactions.includes(entry: :account).find(params[:id])
     @entry = @transaction.entry
@@ -471,7 +482,7 @@ class TransactionsController < ApplicationController
     def entry_params
       entry_params = params.require(:entry).permit(
         :name, :date, :amount, :currency, :excluded, :notes, :nature, :entryable_type,
-        entryable_attributes: [ :id, :category_id, :merchant_id, :kind, :investment_activity_label, :exchange_rate, { tag_ids: [] } ]
+        entryable_attributes: [ :id, :category_id, :merchant_id, :family_counterparty_user_id, :kind, :investment_activity_label, :exchange_rate, { tag_ids: [] } ]
       )
 
       nature = entry_params.delete(:nature)
@@ -505,7 +516,9 @@ class TransactionsController < ApplicationController
         .alphabetically
         .includes(:account_providers, logo_attachment: :blob)
         .to_a
+      @money_transfers_category = Current.family.money_transfers_category
       @categories = Current.family.categories.visible_to(Current.user).alphabetically.to_a
+      @household_members = Current.family.users.where(active: true).where.not(id: Current.user.id).order(:first_name, :last_name).to_a
       @merchants = Current.family.available_merchants_for(Current.user).alphabetically.to_a
       @tags = Current.family.tags.alphabetically.to_a
     end

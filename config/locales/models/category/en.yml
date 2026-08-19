@@ -6,6 +6,7 @@ en:
       other_investments: Other Investments
       investment_contributions: Investment Contributions
       defaults:
+        money_transfers: Money transfers
         income: Income
         food_and_drink: Food & Drink
         groceries: Groceries

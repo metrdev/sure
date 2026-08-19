@@ -900,6 +900,11 @@ components:
           type: string
         icon:
           type: string
+        system_key:
+          type: string
+          nullable: true
+          enum:
+          - money_transfers
         sharing_mode:
           type: string
           enum:
@@ -942,6 +947,11 @@ components:
           type: string
         icon:
           type: string
+        system_key:
+          type: string
+          nullable: true
+          enum:
+          - money_transfers
         sharing_mode:
           type: string
           enum:
@@ -1526,6 +1536,20 @@ components:
         transfer:
           "$ref": "#/components/schemas/Transfer"
           nullable: true
+        family_counterparty:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+            status:
+              type: string
+              enum:
+              - pending
+              - sent
         created_at:
           type: string
           format: date-time
@@ -7474,6 +7498,10 @@ paths:
                       type: string
                       format: uuid
                       description: Merchant ID
+                    family_counterparty_user_id:
+                      type: string
+                      format: uuid
+                      description: Active household member; requires the system money_transfers category
                     nature:
                       type: string
                       enum:
@@ -7582,6 +7610,10 @@ paths:
                     merchant_id:
                       type: string
                       format: uuid
+                    family_counterparty_user_id:
+                      type: string
+                      format: uuid
+                      description: Active household member; requires the system money_transfers category
                     nature:
                       type: string
                       enum:

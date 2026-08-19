@@ -65,7 +65,9 @@ class InvitationsController < ApplicationController
   private
 
     def invitation_params
-      params.require(:invitation).permit(:email, :role, :shared_transactions_visible_from)
+      permitted = params.require(:invitation).permit(:email, :role, :shared_transactions_visible_from)
+      permitted[:shared_transactions_visible_from] = parse_family_date(permitted[:shared_transactions_visible_from]) if permitted[:shared_transactions_visible_from].present?
+      permitted
     end
 
     # Persist the invitation, treating a raced partial-unique-index violation as

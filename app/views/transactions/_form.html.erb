@@ -1,4 +1,4 @@
-<%# locals: (entry:, account_currencies:, manual_accounts:, categories:, merchants:, tags:) %>
+<%# locals: (entry:, account_currencies:, manual_accounts:, categories:, money_transfers_category:, household_members:, merchants:, tags:) %>
 
 <%= styled_form_with model: entry, url: transactions_path, class: "space-y-4", data: { controller: "transaction-form", transaction_form_exchange_rate_url_value: exchange_rate_path, transaction_form_account_currencies_value: account_currencies.to_json } do |f| %>
   <% if entry.errors.any? %>
@@ -29,7 +29,18 @@
       currency_data: { transaction_form_target: "currency", action: "change->transaction-form#onCurrencyChange" } %>
 
     <%= f.fields_for :entryable do |ef| %>
-      <%= ef.collection_select :category_id, categories, :id, :name, { prompt: t(".category_prompt"), label: t(".category"), variant: :badge, searchable: true } %>
+      <%= ef.collection_select :category_id, categories, :id, :name,
+            { prompt: t(".category_prompt"), label: t(".category"), variant: :badge, searchable: true },
+            { data: { transaction_form_target: "category", action: "change->transaction-form#toggleFamilyCounterparty" } } %>
+
+      <div data-transaction-form-target="familyCounterpartyContainer" class="hidden">
+        <%= ef.collection_select :family_counterparty_user_id,
+              household_members,
+              :id,
+              :display_name,
+              { include_blank: t(".external_transfer", default: "Вне семьи"), label: t(".family_counterparty", default: "Участник семьи") } %>
+        <p class="text-xs text-secondary mt-1"><%= t(".family_counterparty_help", default: "У получателя сразу появится зеркальный приход без изменения баланса его счёта.") %></p>
+      </div>
     <% end %>
 
     <%= f.date_field :date,
@@ -110,4 +121,5 @@
   <section>
     <%= f.submit t(".submit") %>
   </section>
+  <%= hidden_field_tag :money_transfers_category_id, money_transfers_category.id, data: { transaction_form_target: "moneyTransfersCategory" } %>
 <% end %>

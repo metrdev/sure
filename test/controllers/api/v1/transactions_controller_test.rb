@@ -133,6 +133,51 @@ class Api::V1::TransactionsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "Family groceries", entry.reload.name
   end
 
+  test "family transfer mirror is serialized as a redacted income" do
+    member = users(:family_member)
+    member.api_keys.active.destroy_all
+    member_key = ApiKey.create!(
+      user: member,
+      name: "Family transfer recipient",
+      scopes: [ "read_write" ],
+      display_key: "family_transfer_#{SecureRandom.hex(8)}"
+    )
+    account = @family.accounts.create!(
+      owner: @user,
+      name: "Sender private account",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    account.account_shares.destroy_all
+    entry = account.entries.create!(
+      name: "Transfer to spouse",
+      notes: "Monthly transfer",
+      date: Date.current,
+      amount: 15_000,
+      currency: @family.currency,
+      entryable: Transaction.new(
+        category: @family.money_transfers_category,
+        family_counterparty_user: member,
+        merchant: @family.available_merchants.first,
+        tags: @family.tags.limit(1)
+      )
+    )
+
+    get api_v1_transactions_url, headers: api_headers(member_key)
+
+    assert_response :success
+    item = JSON.parse(response.body).fetch("transactions").find { |transaction| transaction["id"] == entry.transaction.id }
+    assert_equal "income", item.fetch("classification")
+    assert_nil item.fetch("account")
+    assert_nil item.fetch("merchant")
+    assert_empty item.fetch("tags")
+    assert_equal @user.id, item.dig("family_counterparty", "id")
+    assert_equal "Monthly transfer", item.fetch("notes")
+    assert_nil item["source"]
+    assert_nil item["external_id"]
+  end
+
   test "should filter transactions by account_id" do
     get api_v1_transactions_url, params: { account_id: @account.id }, headers: api_headers(@api_key)
     assert_response :success

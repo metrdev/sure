@@ -328,4 +328,16 @@ class CategoryTest < ActiveSupport::TestCase
     assert_equal 12_000, admin_budget.budget_categories.find_by!(category: admin_copy).budgeted_spending
     assert_equal 18_000, member_budget.budget_categories.find_by!(category: member_copy).budgeted_spending
   end
+
+  test "money transfers system category keeps its identity and sharing mode" do
+    category = @family.money_transfers_category
+
+    assert category.money_transfers?
+    assert category.aligned?
+    assert_not category.update(sharing_mode: "shared", sharing_started_on: Date.current)
+    assert_not category.destroy
+
+    category.reload
+    assert category.update(name: "Переводы в семье", color: "#123456", lucide_icon: "handshake")
+  end
 end

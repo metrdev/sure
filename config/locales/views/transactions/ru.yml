@@ -365,6 +365,8 @@ ru:
       total_transactions: Всего операций
     toggle_recurring_section: Переключить предстоящие повторяющиеся операции
     transaction:
+      reject_family_transfer: Не мой перевод
+      reject_family_transfer_confirmation: Скрыть этот семейный перевод из ваших операций?
       activity_type_tooltip: Тип инвестиционной активности
       linked_with_provider: Связано с %{provider}
       pending: В ожидании
@@ -377,6 +379,9 @@ ru:
       split: Разделить
       split_child_tooltip: Часть разделенной операции
       split_tooltip: Эта операция была разделена на несколько записей
+    family_transfer_rejection:
+      success: Семейный перевод скрыт из ваших операций
+      failure: Эта операция не является вашим семейным переводом
     transfer_match:
       auto_matched: Автоматически сопоставлено
       auto_matched_short: А/С

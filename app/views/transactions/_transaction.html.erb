@@ -1,7 +1,8 @@
 <%# locals: (entry:, balance_trend: nil, view_ctx: "global", in_split_group: false) %>
 
 <% transaction = entry.entryable %>
-<% category_only_access = category_only_transaction_access?(entry) %>
+<% family_transfer_mirror = transaction.family_transfer_mirror_for?(Current.user) %>
+<% category_only_access = category_only_transaction_access?(entry) || family_transfer_mirror %>
 <% transaction_security_logo_url = category_only_access ? nil : transaction.activity_security&.display_logo_url %>
 
 <%= turbo_frame_tag dom_id(entry) do %>
@@ -67,7 +68,9 @@
               <div class="space-y-0.5">
                 <div class="flex items-center gap-1 min-w-0">
                   <div class="truncate flex-shrink">
-                    <% if transaction.transfer? && !category_only_access %>
+                    <% if family_transfer_mirror %>
+                      <span><%= entry.name %></span>
+                    <% elsif transaction.transfer? && !category_only_access %>
                       <%= link_to(
                             entry.name,
                             transaction.transfer.present? ? transfer_path(transaction.transfer) : entry_path(entry),
@@ -91,6 +94,19 @@
                   </div>
 
                   <div class="flex items-center gap-1 flex-shrink-0">
+                    <% if transaction.family_counterparty_user_id.present? %>
+                      <% counterparty = family_transfer_mirror ? entry.account.owner : transaction.family_counterparty_user %>
+                      <%= render DS::Pill.new(label: counterparty.display_name, tone: :neutral, marker: false, icon: "users") %>
+                    <% end %>
+                    <% if family_transfer_mirror %>
+                      <%= button_to reject_family_transfer_transaction_path(transaction),
+                            method: :patch,
+                            class: "text-xs text-secondary hover:text-primary hover:underline",
+                            title: t("transactions.transaction.reject_family_transfer"),
+                            form: { data: { turbo_confirm: t("transactions.transaction.reject_family_transfer_confirmation") } } do %>
+                        <%= t("transactions.transaction.reject_family_transfer") %>
+                      <% end %>
+                    <% end %>
                     <% if transaction.one_time? %>
                       <span class="text-orange-500" title="One-time <%= entry.amount.negative? ? "income" : "expense" %> (excluded from averages)">
                         <%= icon "asterisk", size: "sm", color: "current" %>
@@ -216,8 +232,8 @@
           <% end %>
         <% end %>
         <%= content_tag :p,
-            transaction.transfer? && view_ctx == "global" && !category_only_access ? "+/- #{format_money(entry.amount_money.abs)}" : format_money(-entry.amount_money),
-            class: ["privacy-sensitive", "text-green-600": entry.amount.negative?] %>
+            transaction.transfer? && view_ctx == "global" && !category_only_access ? "+/- #{format_money(entry.amount_money.abs)}" : format_money(-transaction.display_amount_money_for(Current.user)),
+            class: ["privacy-sensitive", "text-green-600": transaction.display_amount_for(Current.user).negative?] %>
       </div>
     </div>
   <% end %>

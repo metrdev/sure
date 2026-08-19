@@ -44,12 +44,17 @@ class PagesController < ApplicationController
     family_currency = Current.family.currency
 
     # Use IncomeStatement for all cashflow data (now includes categorized trades)
-    income_statement = Current.family.income_statement
+    income_statement = IncomeStatement.new(
+      Current.family,
+      user: Current.user,
+      transactions_scope: Transaction.reportable_by(Current.user)
+    )
     income_totals = income_statement.income_totals(period: @period)
     expense_totals = income_statement.expense_totals(period: @period)
     net_totals = income_statement.net_category_totals(period: @period)
 
-    @cashflow_sankey_data = build_cashflow_sankey_data(net_totals, income_totals, expense_totals, family_currency)
+    family_contribution = income_statement.family_contribution_for(@period)
+    @cashflow_sankey_data = build_cashflow_sankey_data(net_totals, income_totals, expense_totals, family_currency, family_contribution)
     @outflows_data = build_outflows_donut_data(net_totals)
     # Preview-gated: skip the query outright rather than loading rows the
     # section won't be built from.
@@ -240,7 +245,7 @@ class PagesController < ApplicationController
       Provider::Registry.get_provider(:github)
     end
 
-    def build_cashflow_sankey_data(net_totals, income_totals, expense_totals, currency)
+    def build_cashflow_sankey_data(net_totals, income_totals, expense_totals, currency, family_contribution = Money.new(0, currency))
       nodes = []
       links = []
       node_indices = {}
@@ -252,7 +257,8 @@ class PagesController < ApplicationController
         end
       }
 
-      total_income = net_totals.total_net_income.to_f.round(2)
+      family_contribution_amount = family_contribution.amount.to_f.round(2)
+      total_income = (net_totals.total_net_income.to_f + family_contribution_amount).round(2)
       total_expense = net_totals.total_net_expense.to_f.round(2)
 
       # Central Cash Flow node
@@ -272,6 +278,12 @@ class PagesController < ApplicationController
         cash_flow_idx: cash_flow_idx,
         flow_direction: :inbound
       )
+
+      if family_contribution_amount.positive?
+        percentage = total_income.zero? ? 0 : (family_contribution_amount / total_income * 100).round(1)
+        family_idx = add_node.call("family_income_node", t("pages.dashboard.family_income", default: "Семья"), family_contribution_amount, percentage, "var(--color-success)")
+        links << { source: family_idx, target: cash_flow_idx, value: family_contribution_amount, color: "var(--color-success)", percentage: percentage }
+      end
 
       # Process net expense categories (flow: cash_flow -> parent -> subcategory)
       process_net_category_nodes(
@@ -455,6 +467,7 @@ class PagesController < ApplicationController
 
       selected_period = nil
       selected_totals = nil
+      selected_family_contribution = Money.new(0, Current.family.currency)
 
       bars = months.map do |month_start|
         # Cap at today so an in-progress month (most commonly the current one)
@@ -462,16 +475,18 @@ class PagesController < ApplicationController
         end_date = [ month_start.end_of_month, Date.current ].min
         period = Period.custom(start_date: month_start, end_date: end_date)
         totals = income_statement.totals_for(period, account_ids: account_ids)
+        family_contribution = account_ids.present? ? Money.new(0, Current.family.currency) : income_statement.family_contribution_for(period)
 
         if month_start == selected_month
           selected_period = period
           selected_totals = totals
+          selected_family_contribution = family_contribution
         end
 
         {
           date: month_start,
           label: I18n.l(month_start, format: :short_month_year),
-          income: totals.income_money.amount.to_f.round(2),
+          income: (totals.income_money + family_contribution).amount.to_f.round(2),
           expense: totals.expense_money.amount.to_f.round(2),
           highlighted: month_start == selected_month,
           partial: end_date < month_start.end_of_month
@@ -482,9 +497,9 @@ class PagesController < ApplicationController
         bars: bars,
         period: selected_period,
         month: selected_month,
-        income: selected_totals.income_money,
+        income: selected_totals.income_money + selected_family_contribution,
         expense: selected_totals.expense_money,
-        balance: selected_totals.income_money - selected_totals.expense_money,
+        balance: selected_totals.income_money + selected_family_contribution - selected_totals.expense_money,
         account_ids: account_ids
       }
     end

@@ -103,4 +103,16 @@ class ApplicationController < ActionController::Base
       Current.finance_accounts
     end
     helper_method :finance_accounts
+
+    def parse_family_date(value)
+      return value if value.blank? || value.is_a?(Date)
+
+      Date.strptime(value, Current.family.date_format)
+    rescue ArgumentError
+      begin
+        Date.iso8601(value)
+      rescue ArgumentError
+        nil
+      end
+    end
 end

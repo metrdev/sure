@@ -1,10 +1,11 @@
 class IncomeStatement::Totals
-  def initialize(family, transactions_scope:, date_range:, include_trades: true, included_account_ids: nil)
+  def initialize(family, transactions_scope:, date_range:, include_trades: true, included_account_ids: nil, viewer_user_id: nil)
     @family = family
     @transactions_scope = transactions_scope
     @date_range = date_range
     @include_trades = include_trades
     @included_account_ids = included_account_ids
+    @viewer_user_id = viewer_user_id
 
     validate_date_range!
   end
@@ -60,8 +61,8 @@ class IncomeStatement::Totals
         SELECT
           c.id as category_id,
           c.parent_id as parent_category_id,
-          CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END as classification,
-          ABS(SUM(CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE ae.amount * COALESCE(er.rate, 1) END)) as total,
+          CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN #{effective_amount_sql} < 0 THEN 'income' ELSE 'expense' END as classification,
+          ABS(SUM(CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE #{effective_amount_sql} * COALESCE(er.rate, 1) END)) as total,
           COUNT(ae.id) as transactions_count,
           false as is_uncategorized_investment
         FROM (#{@transactions_scope.to_sql}) at
@@ -73,14 +74,14 @@ class IncomeStatement::Totals
           er.from_currency = ae.currency AND
           er.to_currency = :target_currency
         )
-        WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
+        WHERE (at.kind NOT IN (#{budget_excluded_kinds_sql}) OR at.family_counterparty_user_id IS NOT NULL)
           AND ae.excluded = false
           AND a.family_id = :family_id
           AND a.status IN ('draft', 'active')
           AND a.exclude_from_reports = false
           #{exclude_tax_advantaged_sql}
           #{include_finance_accounts_sql}
-        GROUP BY c.id, c.parent_id, CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END;
+        GROUP BY c.id, c.parent_id, CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN #{effective_amount_sql} < 0 THEN 'income' ELSE 'expense' END;
       SQL
     end
 
@@ -89,8 +90,8 @@ class IncomeStatement::Totals
         SELECT
           c.id as category_id,
           c.parent_id as parent_category_id,
-          CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END as classification,
-          ABS(SUM(CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE ae.amount * COALESCE(er.rate, 1) END)) as total,
+          CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN #{effective_amount_sql} < 0 THEN 'income' ELSE 'expense' END as classification,
+          ABS(SUM(CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN ABS(ae.amount * COALESCE(er.rate, 1)) ELSE #{effective_amount_sql} * COALESCE(er.rate, 1) END)) as total,
           COUNT(ae.id) as entry_count,
           false as is_uncategorized_investment
         FROM (#{@transactions_scope.to_sql}) at
@@ -102,7 +103,7 @@ class IncomeStatement::Totals
           er.from_currency = ae.currency AND
           er.to_currency = :target_currency
         )
-        WHERE at.kind NOT IN (#{budget_excluded_kinds_sql})
+        WHERE (at.kind NOT IN (#{budget_excluded_kinds_sql}) OR at.family_counterparty_user_id IS NOT NULL)
           AND (
             at.investment_activity_label IS NULL
             OR at.investment_activity_label NOT IN ('Transfer', 'Sweep In', 'Sweep Out', 'Exchange')
@@ -113,7 +114,7 @@ class IncomeStatement::Totals
           AND a.exclude_from_reports = false
           #{exclude_tax_advantaged_sql}
           #{include_finance_accounts_sql}
-        GROUP BY c.id, c.parent_id, CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN ae.amount < 0 THEN 'income' ELSE 'expense' END
+        GROUP BY c.id, c.parent_id, CASE WHEN at.kind IN ('investment_contribution', 'loan_payment') THEN 'expense' WHEN #{effective_amount_sql} < 0 THEN 'income' ELSE 'expense' END
       SQL
     end
 
@@ -134,7 +135,8 @@ class IncomeStatement::Totals
         target_currency: @family.currency,
         family_id: @family.id,
         start_date: @date_range.begin,
-        end_date: @date_range.end
+        end_date: @date_range.end,
+        viewer_user_id: @viewer_user_id
       }
 
       # Add tax-advantaged account IDs if any exist
@@ -163,6 +165,17 @@ class IncomeStatement::Totals
 
     def budget_excluded_kinds_sql
       @budget_excluded_kinds_sql ||= Transaction::BUDGET_EXCLUDED_KINDS.map { |k| "'#{k}'" }.join(", ")
+    end
+
+    def effective_amount_sql
+      <<~SQL.squish
+        CASE
+          WHEN at.family_counterparty_user_id = :viewer_user_id
+            AND a.owner_id <> :viewer_user_id
+          THEN -ae.amount
+          ELSE ae.amount
+        END
+      SQL
     end
 
     def validate_date_range!

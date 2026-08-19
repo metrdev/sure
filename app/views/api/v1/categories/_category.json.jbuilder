@@ -4,6 +4,7 @@ json.id category.id
 json.name category.name
 json.color category.color
 json.icon category.lucide_icon
+json.system_key category.system_key
 json.sharing_mode category.effective_sharing_mode
 json.sharing_started_on category.effective_sharing_started_on if category.shared?
 

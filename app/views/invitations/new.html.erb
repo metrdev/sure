@@ -17,8 +17,9 @@
         {},
         { label: t(".role_label") } %>
 
-      <%= form.date_field :shared_transactions_visible_from,
-        value: @invitation.shared_transactions_visible_from || Date.current,
+      <%= form.text_field :shared_transactions_visible_from,
+        value: (@invitation.shared_transactions_visible_from || Date.current).strftime(Current.family.date_format),
+        placeholder: Family::DATE_FORMATS.find { |_, value| value == Current.family.date_format }&.first,
         required: true,
         label: t(".shared_transactions_visible_from", default: "Can see shared transactions starting on") %>
 

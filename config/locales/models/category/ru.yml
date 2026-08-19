@@ -3,6 +3,7 @@ ru:
   models:
     category:
       defaults:
+        money_transfers: Денежные переводы
         entertainment: Развлечения
         fees: Комиссии
         food_and_drink: Еда и напитки

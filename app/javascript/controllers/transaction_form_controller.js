@@ -5,8 +5,30 @@ export default class extends ExchangeRateFormController {
   static targets = [
     ...ExchangeRateFormController.targets,
     "account",
-    "currency"
+    "currency",
+    "category",
+    "familyCounterpartyContainer",
+    "moneyTransfersCategory"
   ];
+
+  connect() {
+    super.connect();
+    this.toggleFamilyCounterparty();
+  }
+
+  toggleFamilyCounterparty() {
+    if (!this.hasCategoryTarget || !this.hasFamilyCounterpartyContainerTarget || !this.hasMoneyTransfersCategoryTarget) {
+      return;
+    }
+
+    const isFamilyTransfer = this.categoryTarget.value === this.moneyTransfersCategoryTarget.value;
+    this.familyCounterpartyContainerTarget.classList.toggle("hidden", !isFamilyTransfer);
+
+    if (!isFamilyTransfer) {
+      const input = this.familyCounterpartyContainerTarget.querySelector("input[type='hidden'], select");
+      if (input) input.value = "";
+    }
+  }
 
   hasRequiredExchangeRateTargets() {
     if (!this.hasAccountTarget || !this.hasCurrencyTarget || !this.hasDateTarget) {

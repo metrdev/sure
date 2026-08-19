@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_08_18_000000) do
+ActiveRecord::Schema[7.2].define(version: 2026_08_19_000000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -402,6 +402,8 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_18_000000) do
     t.uuid "owner_id"
     t.date "sharing_started_on"
     t.datetime "archived_at"
+    t.string "system_key"
+    t.index ["family_id", "system_key"], name: "index_categories_on_family_and_system_key", unique: true, where: "(system_key IS NOT NULL)"
     t.index ["family_id", "name"], name: "index_household_categories_on_family_and_name", where: "((owner_id IS NULL) AND (archived_at IS NULL))"
     t.index ["family_id", "owner_id", "name"], name: "index_private_categories_on_family_owner_and_name", where: "((owner_id IS NOT NULL) AND (archived_at IS NULL))"
     t.index ["family_id"], name: "index_categories_on_family_id"
@@ -2154,9 +2156,12 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_18_000000) do
     t.jsonb "extra", default: {}, null: false
     t.string "investment_activity_label"
     t.uuid "transfer_id"
+    t.uuid "family_counterparty_user_id"
+    t.datetime "family_transfer_rejected_at"
     t.index "(((extra -> 'goal'::text) ->> 'pledge_id'::text))", name: "ix_transactions_extra_goal_pledge_id", unique: true, where: "(((extra -> 'goal'::text) ->> 'pledge_id'::text) IS NOT NULL)"
     t.index ["category_id"], name: "index_transactions_on_category_id"
     t.index ["external_id"], name: "index_transactions_on_external_id"
+    t.index ["family_counterparty_user_id"], name: "index_transactions_on_family_counterparty_user_id"
     t.index ["extra"], name: "index_transactions_on_extra", using: :gin
     t.index ["investment_activity_label"], name: "index_transactions_on_investment_activity_label"
     t.index ["kind"], name: "index_transactions_on_kind"
@@ -2462,6 +2467,7 @@ ActiveRecord::Schema[7.2].define(version: 2026_08_18_000000) do
   add_foreign_key "transactions", "categories", on_delete: :nullify
   add_foreign_key "transactions", "merchants"
   add_foreign_key "transactions", "transfers", column: "transfer_id"
+  add_foreign_key "transactions", "users", column: "family_counterparty_user_id"
   add_foreign_key "transfers", "transactions", column: "inflow_transaction_id", on_delete: :cascade
   add_foreign_key "transfers", "transactions", column: "outflow_transaction_id", on_delete: :cascade
   add_foreign_key "up_accounts", "up_items"

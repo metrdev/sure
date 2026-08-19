@@ -482,6 +482,7 @@ Rails.application.routes.draw do
       post :merge_duplicate
       post :dismiss_duplicate
       post :unlock
+      patch :reject_family_transfer
       patch :tags, action: :update_tags
     end
   end

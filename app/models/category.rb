@@ -18,16 +18,22 @@ class Category < ApplicationRecord
   validates :name, :color, :lucide_icon, :family, presence: true
   validates :color, format: { with: /\A#[0-9A-Fa-f]{6}\z/ }
   SHARING_MODES = %w[shared aligned private].freeze
+  MONEY_TRANSFERS_SYSTEM_KEY = "money_transfers"
+  SYSTEM_KEYS = [ MONEY_TRANSFERS_SYSTEM_KEY ].freeze
 
   validates :sharing_mode, inclusion: { in: SHARING_MODES }, allow_nil: true
+  validates :system_key, inclusion: { in: SYSTEM_KEYS }, allow_nil: true
 
   validate :category_level_limit
   validate :sharing_configuration
   validate :visible_name_is_unique
+  validate :system_category_configuration
+  validate :system_category_immutability, on: :update
 
   before_validation :assign_default_sharing_mode
   before_save :inherit_color_from_parent
   before_destroy :materialize_inherited_sharing_for_children
+  before_destroy :prevent_system_category_destruction
 
   scope :alphabetically, -> { order(:name) }
   scope :alphabetically_by_hierarchy, -> {
@@ -226,6 +232,12 @@ class Category < ApplicationRecord
           category.lucide_icon = icon
         end
       end
+      find_or_create_by!(system_key: MONEY_TRANSFERS_SYSTEM_KEY) do |category|
+        category.name = I18n.t("models.category.defaults.money_transfers", default: "Money transfers")
+        category.color = TRANSFER_COLOR
+        category.lucide_icon = "handshake"
+        category.sharing_mode = "aligned"
+      end
     end
 
     def uncategorized
@@ -363,6 +375,10 @@ class Category < ApplicationRecord
     effective_sharing_mode == "private"
   end
 
+  def money_transfers?
+    system_key == MONEY_TRANSFERS_SYSTEM_KEY
+  end
+
   def usable_for_account?(account)
     account.present? &&
       archived_at.nil? &&
@@ -371,6 +387,8 @@ class Category < ApplicationRecord
   end
 
   def replace_and_destroy!(replacement)
+    raise ArgumentError, "system category cannot be deleted" if money_transfers?
+
     if replacement && replacement.family_id != family_id
       raise ArgumentError, "replacement category must belong to the same family"
     end
@@ -455,6 +473,34 @@ class Category < ApplicationRecord
           errors.add(:sharing_started_on, "is only available for shared categories")
         end
       end
+    end
+
+    def system_category_configuration
+      return unless money_transfers?
+
+      errors.add(:parent, "must be blank for a system category") if parent_id.present?
+      errors.add(:sharing_mode, "must be aligned for a system category") unless sharing_mode == "aligned"
+      errors.add(:owner, "must be blank for a system category") if owner_id.present?
+      errors.add(:sharing_started_on, "must be blank for a system category") if sharing_started_on.present?
+      errors.add(:archived_at, "must be blank for a system category") if archived_at.present?
+    end
+
+    def system_category_immutability
+      was_system = system_key_was == MONEY_TRANSFERS_SYSTEM_KEY
+      return unless was_system
+
+      errors.add(:system_key, "cannot be changed") if will_save_change_to_system_key?
+      errors.add(:sharing_mode, "cannot be changed") if will_save_change_to_sharing_mode?
+      errors.add(:parent, "cannot be changed") if will_save_change_to_parent_id?
+      errors.add(:owner, "cannot be changed") if will_save_change_to_owner_id?
+      errors.add(:archived_at, "cannot be changed") if will_save_change_to_archived_at?
+    end
+
+    def prevent_system_category_destruction
+      return unless money_transfers?
+
+      errors.add(:base, "system category cannot be deleted")
+      throw :abort
     end
 
     def visible_name_is_unique
