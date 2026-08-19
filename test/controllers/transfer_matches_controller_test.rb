@@ -88,9 +88,10 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
     sender_entry.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
     sign_in recipient
 
-    get new_transaction_transfer_match_path(sender_entry.transaction)
+    get new_transaction_transfer_match_path(sender_entry.transaction), headers: { "Turbo-Frame" => "drawer" }
 
     assert_response :success
+    assert_select "turbo-frame#drawer"
     assert_select "body", text: /Transfer from/
     assert_select "body", text: /Hidden sender account/, count: 0
 

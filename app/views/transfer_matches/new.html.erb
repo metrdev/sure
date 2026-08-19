@@ -1,4 +1,4 @@
-<%= render DS::Dialog.new do |dialog| %>
+<%= render DS::Dialog.new(frame: "drawer", responsive: true) do |dialog| %>
   <% dialog.with_header(
        title: @family_transfer_mirror ? t(".accept_family_transfer") : t(".header.title"),
        subtitle: @family_transfer_mirror ? @entry.transaction.family_transfer_name_for(Current.user) : t(".header.subtitle")
