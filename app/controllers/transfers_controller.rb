@@ -176,7 +176,7 @@ class TransfersController < ApplicationController
         .first!
 
       raise ActiveRecord::RecordNotFound unless action_name == "update" &&
-                                                @transfer.family_transfer? &&
+                                                (@transfer.family_transfer? || @transfer.pending_family_transfer?) &&
                                                 family_transfer_status_only_update?
 
       @family_transfer_status_only_update = true

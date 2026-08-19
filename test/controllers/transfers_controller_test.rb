@@ -327,7 +327,8 @@ class TransfersControllerTest < ActionDispatch::IntegrationTest
     outflow = create_transaction(account: sender_account, amount: 30_000)
     inflow = create_transaction(account: recipient_account, amount: -30_000)
     outflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
-    inflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: sender)
+    outflow.transaction.update!(kind: "funds_movement")
+    inflow.transaction.update!(kind: "funds_movement")
     transfer = Transfer.create!(inflow_transaction: inflow.transaction, outflow_transaction: outflow.transaction, status: "pending")
     sign_in recipient
 
@@ -335,6 +336,11 @@ class TransfersControllerTest < ActionDispatch::IntegrationTest
 
     assert_redirected_to transactions_url
     assert transfer.reload.confirmed?
+    assert transfer.family_transfer?
+    assert_equal sender, inflow.transaction.reload.family_counterparty_user
+    assert_equal family.money_transfers_category, inflow.transaction.category
+    assert_equal "standard", outflow.transaction.reload.kind
+    assert_equal "standard", inflow.transaction.kind
 
     patch transfer_url(transfer), params: { transfer: { status: "confirmed", notes: "Sender account leak" } }
 

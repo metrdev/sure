@@ -82,6 +82,17 @@ class Transfer < ApplicationRecord
       inflow_transaction.family_counterparty_user_id == sender.id
   end
 
+  def pending_family_transfer?
+    return false unless pending?
+
+    sender = outflow_transaction&.entry&.account&.owner
+    recipient = inflow_transaction&.entry&.account&.owner
+    return false unless sender && recipient
+
+    (outflow_transaction.family_counterparty_user_id == recipient.id && inflow_transaction.family_counterparty_user_id.nil?) ||
+      (inflow_transaction.family_counterparty_user_id == sender.id && outflow_transaction.family_counterparty_user_id.nil?)
+  end
+
   def loan_payment?
     outflow_transaction&.kind == "loan_payment"
   end
@@ -131,7 +142,10 @@ class Transfer < ApplicationRecord
   end
 
   def confirm!
-    update!(status: "confirmed")
+    Transfer.transaction do
+      complete_pending_family_transfer! if pending_family_transfer?
+      update!(status: "confirmed")
+    end
   end
 
   def date
@@ -153,6 +167,27 @@ class Transfer < ApplicationRecord
   end
 
   private
+    def complete_pending_family_transfer!
+      sender = outflow_transaction.entry.account.owner
+      recipient = inflow_transaction.entry.account.owner
+
+      if outflow_transaction.family_counterparty_user_id == recipient.id
+        inflow_transaction.update!(
+          category: to_account.family.money_transfers_category,
+          family_counterparty_user: sender,
+          kind: "standard"
+        )
+        outflow_transaction.update!(kind: "standard")
+      else
+        outflow_transaction.update!(
+          category: from_account.family.money_transfers_category,
+          family_counterparty_user: recipient,
+          kind: "standard"
+        )
+        inflow_transaction.update!(kind: "standard")
+      end
+    end
+
     def transfer_has_different_accounts
       return unless inflow_transaction&.entry && outflow_transaction&.entry
       errors.add(:base, :different_accounts) if to_account == from_account

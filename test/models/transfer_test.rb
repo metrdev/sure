@@ -78,6 +78,27 @@ class TransferTest < ActiveSupport::TestCase
     assert_equal(-29_900, transfer.inflow_transaction.entry.amount)
   end
 
+  test "confirming a pending family match completes the sender side" do
+    sender = users(:family_admin)
+    recipient = users(:family_member)
+    family = sender.family
+    sender_account = family.accounts.create!(owner: sender, name: "Sender pending", balance: 0, currency: family.currency, accountable: Depository.new)
+    recipient_account = family.accounts.create!(owner: recipient, name: "Recipient pending", balance: 0, currency: family.currency, accountable: Depository.new)
+    outflow = create_transaction(account: sender_account, amount: 100)
+    inflow = create_transaction(account: recipient_account, amount: -100)
+    inflow.transaction.update!(category: family.money_transfers_category, family_counterparty_user: sender, kind: "funds_movement")
+    outflow.transaction.update!(kind: "funds_movement")
+    transfer = Transfer.create!(inflow_transaction: inflow.transaction, outflow_transaction: outflow.transaction, status: "pending")
+
+    transfer.confirm!
+
+    assert transfer.reload.family_transfer?
+    assert_equal recipient, outflow.transaction.reload.family_counterparty_user
+    assert_equal family.money_transfers_category, outflow.transaction.category
+    assert_equal "standard", outflow.transaction.kind
+    assert_equal "standard", inflow.transaction.reload.kind
+  end
+
   test "unlinking family transfer preserves both operations and removes family assignment" do
     sender = users(:family_admin)
     recipient = users(:family_member)
