@@ -74,6 +74,29 @@ class TransactionsControllerTest < ActionDispatch::IntegrationTest
     assert_enqueued_with(job: SyncJob)
   end
 
+  test "shows family counterparty selector when editing a money transfer" do
+    @entry.transaction.update!(category: @user.family.money_transfers_category)
+    member = users(:family_member)
+
+    get transaction_url(@entry)
+
+    assert_response :success
+    assert_select "input[name='entry[entryable_attributes][family_counterparty_user_id]']"
+    assert_select "body", text: /Jakob Dylan/
+
+    patch transaction_url(@entry), params: {
+      entry: {
+        entryable_attributes: {
+          id: @entry.entryable_id,
+          family_counterparty_user_id: member.id
+        }
+      }
+    }
+
+    assert_response :redirect
+    assert_equal member.id, @entry.transaction.reload.family_counterparty_user_id
+  end
+
   test "transaction count represents filtered total" do
     family = families(:empty)
     sign_in users(:empty)

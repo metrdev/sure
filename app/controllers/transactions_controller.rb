@@ -12,6 +12,10 @@ class TransactionsController < ApplicationController
     set_new_transaction_form_options
   end
 
+  def show
+    set_family_transfer_form_options(excluded_user_id: @entry.account.owner_id) if can_edit_entry?
+  end
+
   def index
     @q = search_params
     @accessible_account_ids = Current.user.accessible_accounts.pluck(:id)
@@ -179,6 +183,7 @@ class TransactionsController < ApplicationController
         end
       end
     else
+      set_family_transfer_form_options(excluded_user_id: @entry.account.owner_id) if can_edit_entry?
       render :show, status: :unprocessable_entity
     end
   end
@@ -516,11 +521,19 @@ class TransactionsController < ApplicationController
         .alphabetically
         .includes(:account_providers, logo_attachment: :blob)
         .to_a
-      @money_transfers_category = Current.family.money_transfers_category
+      set_family_transfer_form_options(excluded_user_id: Current.user.id)
       @categories = Current.family.categories.visible_to(Current.user).alphabetically.to_a
-      @household_members = Current.family.users.where(active: true).where.not(id: Current.user.id).order(:first_name, :last_name).to_a
       @merchants = Current.family.available_merchants_for(Current.user).alphabetically.to_a
       @tags = Current.family.tags.alphabetically.to_a
+    end
+
+    def set_family_transfer_form_options(excluded_user_id:)
+      @money_transfers_category = Current.family.money_transfers_category
+      @household_members = Current.family.users
+        .where(active: true)
+        .where.not(id: excluded_user_id)
+        .order(:first_name, :last_name)
+        .to_a
     end
 
     # Filters entry_params based on the user's permission on the account.

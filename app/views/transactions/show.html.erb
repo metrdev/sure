@@ -61,7 +61,7 @@
         <%= styled_form_with model: @entry,
               url: transaction_path(@entry),
               class: "space-y-2",
-              data: { controller: "auto-submit-form" } do |f| %>
+              data: { controller: "auto-submit-form transaction-form" } do |f| %>
           <%= hidden_field_tag :grouped, "true" if params[:grouped] == "true" %>
           <%= f.text_field :name,
                 label: t(".name_label"),
@@ -93,7 +93,27 @@
                     { label: t(".category_label"),
                       class: "text-subdued", include_blank: t(".uncategorized"),
                       variant: :badge, searchable: true, disabled: @entry.split_child? || annotate_locked },
-                    "data-auto-submit-form-target": "auto" %>
+                    "data-auto-submit-form-target": "auto",
+                    "data-transaction-form-target": "category",
+                    "data-action": "change->transaction-form#toggleFamilyCounterparty" %>
+
+              <% if can_edit_entry? %>
+                <div data-transaction-form-target="familyCounterpartyContainer" class="hidden">
+                  <%= ef.collection_select :family_counterparty_user_id,
+                        @household_members,
+                        :id,
+                        :display_name,
+                        { include_blank: t("transactions.form.external_transfer", default: "Вне семьи"),
+                          label: t("transactions.form.family_counterparty", default: "Участник семьи") },
+                        "data-auto-submit-form-target": "auto" %>
+                  <p class="text-xs text-secondary mt-1"><%= t("transactions.form.family_counterparty_help", default: "У другого участника появится зеркальная операция без изменения баланса его счёта.") %></p>
+                </div>
+              <% end %>
+            <% end %>
+            <% if can_edit_entry? %>
+              <%= hidden_field_tag :money_transfers_category_id,
+                    @money_transfers_category.id,
+                    data: { transaction_form_target: "moneyTransfersCategory" } %>
             <% end %>
           <% end %>
         <% end %>
