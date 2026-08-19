@@ -82,6 +82,7 @@ class TransactionsControllerTest < ActionDispatch::IntegrationTest
 
     assert_response :success
     assert_select "input[name='entry[entryable_attributes][family_counterparty_user_id]']"
+    assert_select "[data-transaction-form-target='familyCounterpartyContainer']:not(.hidden)"
     assert_select "body", text: /Jakob Dylan/
 
     patch transaction_url(@entry), params: {

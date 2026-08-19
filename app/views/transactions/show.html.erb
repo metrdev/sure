@@ -98,7 +98,8 @@
                     "data-action": "change->transaction-form#toggleFamilyCounterparty" %>
 
               <% if can_edit_entry? %>
-                <div data-transaction-form-target="familyCounterpartyContainer" class="hidden">
+                <div data-transaction-form-target="familyCounterpartyContainer"
+                     class="<%= "hidden" unless @entry.transaction.category_id == @money_transfers_category.id %>">
                   <%= ef.collection_select :family_counterparty_user_id,
                         @household_members,
                         :id,
