@@ -1,5 +1,14 @@
 # Repository Guidelines
 
+## Normative specifications
+
+- Start fork-specific behavioral work with `specs/index.md`, then read `specs/product.md`, `specs/glossary.md`, the owning feature specification, and every document in its `depends_on` list.
+- `specs/` is the normative source for behavior introduced or changed by this fork. Upstream behavior that the fork does not change remains outside this local specification unless `specs/index.md` explicitly assigns an owner.
+- Update the owning specification before or together with a change to observable behavior. Preserve stable `SCN-*`, `REQ-*`, `RULE-*`, and `AC-*` identifiers; never reuse a retired ID for another meaning.
+- An active specification must not contain blocking open questions. Use `draft` for unresolved behavior instead of inventing a default.
+- Keep one canonical owner for every rule. Cross-layer documents reference the owning ID rather than copying the rule.
+- The parent repository owns MCP tools, confirmation tokens, deployment, backup, and recovery under `../specs/`. Update both repositories only when both observable contracts change.
+
 ## Project Structure & Module Organization
 - Code: `app/` (Rails MVC, services, jobs, mailers, components), JS in `app/javascript/`, styles/assets in `app/assets/` (Tailwind, images, fonts).
 - Config: `config/`, environment examples in `.env.local.example` and `.env.test.example`.
