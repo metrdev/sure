@@ -5,7 +5,8 @@ module Family::AutoTransferMatchable
     inflow_transaction_id: nil,
     outflow_transaction_id: nil,
     account_id: nil,
-    include_rejected: true
+    include_rejected: true,
+    same_owner: true
   )
     date_window = coerce_transfer_match_date_window!(date_window)
     exchange_rate_tolerance = coerce_transfer_match_exchange_rate_tolerance!(exchange_rate_tolerance)
@@ -19,6 +20,7 @@ module Family::AutoTransferMatchable
         outflow_transaction_id:,
         account_id:,
         include_rejected:,
+        same_owner:,
         lower_exchange_rate_bound: 1 - exchange_rate_tolerance,
         upper_exchange_rate_bound: 1 + exchange_rate_tolerance
       }
@@ -134,6 +136,7 @@ module Family::AutoTransferMatchable
             inflow_candidates.amount < 0 AND
             inflow_accounts.family_id = :family_id AND
             outflow_accounts.family_id = :family_id AND
+            (:same_owner = FALSE OR (inflow_accounts.owner_id IS NOT NULL AND outflow_accounts.owner_id = inflow_accounts.owner_id)) AND
             inflow_accounts.status IN ('draft', 'active') AND
             outflow_accounts.status IN ('draft', 'active') AND
             existing_transfers.id IS NULL AND
@@ -177,6 +180,7 @@ module Family::AutoTransferMatchable
             inflow_candidates.amount < 0 AND
             inflow_accounts.family_id = :family_id AND
             outflow_accounts.family_id = :family_id AND
+            (:same_owner = FALSE OR (inflow_accounts.owner_id IS NOT NULL AND outflow_accounts.owner_id = inflow_accounts.owner_id)) AND
             inflow_accounts.status IN ('draft', 'active') AND
             outflow_accounts.status IN ('draft', 'active') AND
             existing_transfers.id IS NULL AND

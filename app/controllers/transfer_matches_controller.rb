@@ -3,7 +3,7 @@ class TransferMatchesController < ApplicationController
 
   def new
     @accounts = target_accounts
-    @transfer_match_candidates = @entry.transaction.transfer_match_candidates.select do |candidate|
+    @transfer_match_candidates = @entry.transaction.transfer_match_candidates(same_owner: !@family_transfer_mirror).select do |candidate|
       other_entry = @entry.amount.positive? ? candidate.inflow_transaction.entry : candidate.outflow_transaction.entry
       !@family_transfer_mirror || other_entry.account.owner_id == Current.user.id
     end

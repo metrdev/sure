@@ -19,6 +19,42 @@ class Family::AutoTransferMatchableTest < ActiveSupport::TestCase
     end
   end
 
+  test "does not auto-match transactions from accounts with different owners" do
+    other_owner_account = @family.accounts.create!(
+      owner: users(:family_member),
+      name: "Other owner account #{SecureRandom.hex(4)}",
+      balance: 0,
+      currency: "USD",
+      accountable: Depository.new
+    )
+
+    create_transaction(date: Date.current, account: @depository, amount: 987_654)
+    create_transaction(date: Date.current, account: other_owner_account, amount: -987_654)
+
+    assert_no_difference -> { Transfer.count } do
+      @family.auto_match_transfers!
+    end
+  end
+
+  test "explicit family workflow can request candidates from different owners" do
+    other_owner_account = @family.accounts.create!(
+      owner: users(:family_member),
+      name: "Explicit family recipient #{SecureRandom.hex(4)}",
+      balance: 0,
+      currency: "USD",
+      accountable: Depository.new
+    )
+
+    outflow = create_transaction(date: Date.current, account: @depository, amount: 876_543)
+    inflow = create_transaction(date: Date.current, account: other_owner_account, amount: -876_543)
+
+    candidate_pairs = @family.transfer_match_candidates(same_owner: false).map do |candidate|
+      [ candidate.inflow_transaction_id, candidate.outflow_transaction_id ]
+    end
+
+    assert_includes candidate_pairs, [ inflow.entryable_id, outflow.entryable_id ]
+  end
+
   test "auto-matches multi-currency transfers" do
     load_exchange_prices
     create_transaction(date: 1.day.ago.to_date, account: @depository, amount: 500)
@@ -244,6 +280,9 @@ class Family::AutoTransferMatchableTest < ActiveSupport::TestCase
     assert_includes sql, "outflow_candidates.excluded = FALSE"
     assert_includes sql, ":account_id IS NULL OR inflow_candidates.account_id = :account_id OR outflow_candidates.account_id = :account_id"
     assert_includes sql, "outflow_candidates.amount = -inflow_candidates.amount"
+    assert_includes sql, ":same_owner = FALSE"
+    assert_includes sql, "inflow_accounts.owner_id IS NOT NULL"
+    assert_includes sql, "outflow_accounts.owner_id = inflow_accounts.owner_id"
     assert_includes sql, "JOIN exchange_rates"
   end
 

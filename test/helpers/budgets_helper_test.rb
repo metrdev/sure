@@ -104,4 +104,42 @@ class BudgetsHelperTest < ActionView::TestCase
     assert_equal [ child.id ], group.budget_subcategories.map(&:category_id)
     assert group.budget_subcategories.first.any_over_budget?
   end
+
+  test "hides root category with zero limit and spending from summary" do
+    zero_category = Category.create!(
+      name: "Helper Zero Root #{SecureRandom.hex(4)}",
+      family: @family,
+      color: "#64748b",
+      lucide_icon: "circle"
+    )
+
+    zero_budget_category = BudgetCategory.create!(
+      budget: @budget,
+      category: zero_category,
+      budgeted_spending: 0,
+      currency: "USD"
+    )
+
+    Entry.create!(
+      account: accounts(:depository),
+      entryable: Transaction.create!(category: zero_category),
+      date: @budget.start_date,
+      name: "Helper Unbudgeted Spending",
+      amount: 25,
+      currency: "USD"
+    )
+
+    budget = Budget.find(@budget.id)
+    state = budget_categories_view_state(budget)
+
+    refute_includes state[:over_budget_groups].map { |group| group.budget_category.id }, zero_budget_category.id
+    assert budget.budget_categories.find(zero_budget_category.id).any_over_budget?
+  end
+
+  test "zero-limit category alone does not mark budget summary as over budget" do
+    budget_category = stub(any_over_budget?: true, over_budget_with_budget?: false)
+    budget = stub(initialized?: true, budget_categories: [ budget_category ])
+
+    refute budget_has_over_budget?(budget)
+  end
 end

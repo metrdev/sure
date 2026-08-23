@@ -2,7 +2,7 @@ module BudgetsHelper
   def budget_has_over_budget?(budget)
     return false unless budget.initialized?
 
-    budget.budget_categories.any?(&:any_over_budget?)
+    budget.budget_categories.any?(&:over_budget_with_budget?)
   end
 
   def budget_categories_view_state(budget)
@@ -17,13 +17,13 @@ module BudgetsHelper
       all_category_groups = BudgetCategory::Group.for(budget.budget_categories)
 
       over_budget_groups = if budget.initialized?
-        filtered_groups_for(all_category_groups) { |budget_category| budget_category.any_over_budget? }
+        filtered_groups_for(all_category_groups) { |budget_category| budget_category.over_budget_with_budget? }
       else
         []
       end
 
       show_over_budget_uncategorized = budget.initialized? && uncategorized_budget_category.any_over_budget?
-      over_budget_count = visible_count_for(over_budget_groups) { |budget_category| budget_category.any_over_budget? }
+      over_budget_count = visible_count_for(over_budget_groups) { |budget_category| budget_category.over_budget_with_budget? }
       over_budget_count += 1 if show_over_budget_uncategorized
 
       on_track_groups = if budget.initialized?

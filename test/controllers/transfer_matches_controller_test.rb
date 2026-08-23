@@ -123,4 +123,23 @@ class TransferMatchesControllerTest < ActionDispatch::IntegrationTest
     assert_nil sender_entry.transaction.reload.family_counterparty_user
     assert_nil recipient_transaction.reload.family_counterparty_user
   end
+
+  test "recipient can match a family transfer to an existing owned transaction" do
+    sender = users(:family_admin)
+    recipient = users(:family_member)
+    family = sender.family
+    sender_account = family.accounts.create!(owner: sender, name: "Existing match sender", balance: 0, currency: family.currency, accountable: Depository.new)
+    recipient_account = family.accounts.create!(owner: recipient, name: "Existing match recipient", balance: 0, currency: family.currency, accountable: Depository.new)
+    sender_account.account_shares.destroy_all
+    recipient_account.account_shares.destroy_all
+    sender_entry = create_transaction(account: sender_account, amount: 12_345, name: "Family transfer to match")
+    sender_entry.transaction.update!(category: family.money_transfers_category, family_counterparty_user: recipient)
+    recipient_entry = create_transaction(account: recipient_account, amount: -12_345, name: "Imported family income")
+    sign_in recipient
+
+    get new_transaction_transfer_match_path(sender_entry.transaction), headers: { "Turbo-Frame" => "drawer" }
+
+    assert_response :success
+    assert_select "select[name='transfer_match[matched_entry_id]'] option[value='#{recipient_entry.id}']", count: 1
+  end
 end
