@@ -283,6 +283,66 @@ class CategoryTest < ActiveSupport::TestCase
     assert BudgetCategory.find(household_limit.id).archived_at
   end
 
+  test "administrator keeps a private copy when privatizing an empty household category" do
+    admin = users(:family_admin)
+    category = @family.categories.create!(
+      name: "Empty household category to privatize",
+      color: "#123456",
+      lucide_icon: "hand-helping",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+
+    admin_copy = Category::ChangeSharingMode.call!(
+      category: category,
+      attributes: { sharing_mode: "private" },
+      owner: admin
+    )
+
+    assert admin_copy
+    assert admin_copy.private?
+    assert_equal admin, admin_copy.owner
+    assert Category.unscoped.find(category.id).archived_at
+  end
+
+  test "administrator keeps a private copy when only another member has transactions" do
+    admin = users(:family_admin)
+    member = users(:family_member)
+    category = @family.categories.create!(
+      name: "Member-only household category to privatize",
+      color: "#654321",
+      lucide_icon: "shopping-bag",
+      sharing_mode: "shared",
+      sharing_started_on: Date.current.beginning_of_month
+    )
+    member_account = @family.accounts.create!(
+      owner: member,
+      name: "Member-only account for category transition",
+      balance: 0,
+      currency: @family.currency,
+      accountable: Depository.new
+    )
+    member_transaction = member_account.entries.create!(
+      name: "Member-only shared purchase",
+      date: Date.current,
+      amount: 200,
+      currency: @family.currency,
+      entryable: Transaction.new(category: category)
+    ).transaction
+
+    admin_copy = Category::ChangeSharingMode.call!(
+      category: category,
+      attributes: { sharing_mode: "private" },
+      owner: admin
+    )
+    member_copy = @family.categories.private_for(member).find_by!(name: category.name)
+
+    assert admin_copy
+    assert_equal admin, admin_copy.owner
+    assert_empty admin_copy.transactions
+    assert_equal member_copy, member_transaction.reload.category
+  end
+
   test "aligned personal limits follow private category copies" do
     admin = users(:family_admin)
     member = users(:family_member)

@@ -36,8 +36,8 @@ Active members одного Household используют общие опред
 
 ### Household → private
 
-- `RULE-HH-008`: переход shared/aligned category в private создает отдельную private root copy для каждого active member, у которого есть операция в исходной ветви.
-- `RULE-HH-009`: member без операций не получает пустую private copy.
+- `RULE-HH-008`: переход shared/aligned category в private всегда создает private root copy для administrator, выполняющего переход, и отдельную copy для каждого другого active member, у которого есть операция в исходной ветви.
+- `RULE-HH-009`: member без операций не получает пустую private copy, кроме administrator, выполняющего переход.
 - `RULE-HH-010`: subcategories копируются под private root и наследуют его configuration.
 - `RULE-HH-011`: операции каждого member перемещаются в его соответствующую private copy в одной database transaction.
 - `RULE-HH-012`: исходные household categories архивируются после успешного перемещения.
@@ -127,7 +127,7 @@ Active members одного Household используют общие опред
 
 - `AC-HH-001`: member-created root category private и не видна administrator без independent ownership.
 - `AC-HH-002`: administrator создает shared category только с explicit date; eligible operation появляется после обеих access dates.
-- `AC-HH-003`: household → private создает copies только members с operations и перемещает каждую operation к своему owner.
+- `AC-HH-003`: household → private сохраняет private copy administrator даже без его операций, создает copies остальных members только при наличии их operations и перемещает каждую operation к своему owner.
 - `AC-HH-004`: household/personal budget sets и actuals не пересекаются.
 - `AC-HH-005`: recipient видит pending mirror без sender account/notes/tags/merchant и с противоположным sign.
 - `AC-HH-006`: recipient принимает mirror в own existing/new side без sender account permission.

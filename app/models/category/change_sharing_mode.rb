@@ -50,7 +50,7 @@ class Category::ChangeSharingMode
     Category.transaction do
       source_mode = category.effective_sharing_mode
       source_categories = [ category, *category.subcategories ].index_by(&:id)
-      members = members_with_transactions(source_categories.keys)
+      members = members_with_transactions(source_categories.keys) | [ owner ]
       limits = personal_limits(source_categories.keys) if source_mode == "aligned"
 
       ensure_names_available!(members, source_categories.values)
